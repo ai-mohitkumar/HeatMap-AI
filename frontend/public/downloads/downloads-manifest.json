@@ -1,0 +1,55 @@
+{
+  "buildTimestamp": "2026-09-12T17:26:00+05:30",
+  "packages": {
+    "android": {
+      "fileName": "HeatShield-AI-v2.0-universal.apk",
+      "url": "/downloads/HeatShield-AI-v2.0-universal.apk",
+      "sizeBytes": 496589,
+      "sizeFormatted": "485.0 KB",
+      "version": "2.0.4",
+      "sha256": "26acbaadb79df8df8ddde47aab2105e1b2118ec77112dd1c72871ec09b0228f7",
+      "format": "APK (Native Signed Package)",
+      "compatibility": "Android 7.0 to 15 (Universal ARM64, ARMv7, x86_64)"
+    },
+    "ios": {
+      "fileName": "HeatShield-AI-iOS.mobileconfig",
+      "url": "/downloads/HeatShield-AI-iOS.mobileconfig",
+      "sizeBytes": 1868,
+      "sizeFormatted": "1.8 KB",
+      "version": "2.0.4",
+      "sha256": "cf62b88ee4256461b8ef6168986ffc07ef446ee0d355bcdd72da023752fb7b7a",
+      "format": "Apple Configuration Profile (.mobileconfig)",
+      "compatibility": "iOS 15.0+, iPadOS 15.0+, macOS Monterey+"
+    },
+    "smartwatch": {
+      "fileName": "HeatShield-WearOS-Companion.apk",
+      "url": "/downloads/HeatShield-WearOS-Companion.apk",
+      "sizeBytes": 12833,
+      "sizeFormatted": "12.5 KB",
+      "version": "2.0.4",
+      "sha256": "d4312a401ad29fbcc961fd71772b1a858b4127f456f6949f5dce043e9775d714",
+      "format": "Wear OS Native Signed APK",
+      "compatibility": "Wear OS 3.0+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3"
+    },
+    "desktop": {
+      "fileName": "HeatShield-AI-Desktop-Windows.zip",
+      "url": "/downloads/HeatShield-AI-Desktop-Windows.zip",
+      "sizeBytes": 483653,
+      "sizeFormatted": "0.5 MB",
+      "version": "2.0.4",
+      "sha256": "400b5bff8862f62209d1f1af224f685587cf426b4c3e955192a8e465eab1ad6f",
+      "format": "Windows / macOS Portable (.zip)",
+      "compatibility": "Windows 10/11, macOS 12+, Linux x86_64"
+    },
+    "master": {
+      "fileName": "HeatShield-AI-Master-Offline-Suite.zip",
+      "url": "/downloads/HeatShield-AI-Master-Offline-Suite.zip",
+      "sizeBytes": 19218,
+      "sizeFormatted": "0.0 MB",
+      "version": "2.0.4",
+      "sha256": "b81ad4163630f7657d0fa50b6ca723a31f491013acf9a4fbee56dec4bdbc6220",
+      "format": "Full Master Research Package (.zip)",
+      "compatibility": "All Platforms (Universal Offline Bundle)"
+    }
+  }
+}

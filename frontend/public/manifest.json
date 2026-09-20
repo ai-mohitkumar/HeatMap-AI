@@ -1,0 +1,36 @@
+{
+  "name": "HeatShield AI — Cross-Platform Heat Intelligence Ecosystem",
+  "short_name": "HeatShield",
+  "description": "AI-powered heat safety companion and regional climate intelligence platform with real-time continuous IDW interpolation across all 787 districts and 650,000 villages of India.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090F1F",
+  "theme_color": "#090F1F",
+  "orientation": "any",
+  "categories": ["weather", "health", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Live Heat Risk",
+      "url": "/?tab=home",
+      "description": "Instant Heat Index and feels-like evaluation"
+    },
+    {
+      "name": "Mobile Device Suite",
+      "url": "/?tab=apps",
+      "description": "iOS, Android, Watch and Desktop showcase"
+    },
+    {
+      "name": "Villages & Districts",
+      "url": "/?tab=villages",
+      "description": "Explore 650,000 Indian villages"
+    }
+  ]
+}

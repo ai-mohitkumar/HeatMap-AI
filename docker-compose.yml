@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  heatmap-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: heatmap_ai_service
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend/data:/app/backend/data
+    restart: unless-stopped

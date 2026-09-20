@@ -1,0 +1,11 @@
+{
+  "name": "heatshield-ai",
+  "version": "2.0.0",
+  "private": true,
+  "description": "HeatShield AI — Unsupervised Spatiotemporal Climate Intelligence & Heat Safety System",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "dev": "cd frontend && npm run dev",
+    "start": "cd frontend && npm run preview"
+  }
+}

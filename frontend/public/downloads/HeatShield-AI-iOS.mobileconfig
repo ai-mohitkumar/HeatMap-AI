@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadDisplayName</key>
+    <string>HeatShield AI — Heat Safety Companion</string>
+    <key>PayloadDescription</key>
+    <string>Installs the HeatShield AI standalone application icon directly to your iPhone / iPad home screen with offline continuous IDW biometeorological intelligence.</string>
+    <key>PayloadIdentifier</key>
+    <string>ai.heatshield.ios.webclip</string>
+    <key>PayloadOrganization</key>
+    <string>HeatShield AI Project</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>0FF17DB2-F9F3-40B4-AEA4-E1FC9F329698</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadRemovalDisallowed</key>
+    <false/>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.webClip.managed</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadIdentifier</key>
+            <string>ai.heatshield.ios.webclip.entry</string>
+            <key>PayloadUUID</key>
+            <string>61D91490-61C4-4C5E-B15D-1CBF44FAEB21</string>
+            <key>PayloadDisplayName</key>
+            <string>HeatShield AI</string>
+            <key>Label</key>
+            <string>HeatShield</string>
+            <key>URL</key>
+            <string>http://127.0.0.1:5173/</string>
+            <key>IsRemovable</key>
+            <true/>
+            <key>FullScreen</key>
+            <true/>
+            <key>Precomposed</key>
+            <true/>
+            <key>IgnoreManifestScope</key>
+            <true/>
+        </dict>
+    </array>
+</dict>
+</plist>
