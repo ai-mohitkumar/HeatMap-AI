@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import React, { useState, useMemo, useEffect } from 'react';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import type { StationGeoRecord, StationExplanation } from '../types';
 import { api } from '../services/api';
+import { getOfflineStationExplanation } from '../utils/offlineEngine';
 import {
   Filter,
   Search,
@@ -22,6 +23,34 @@ interface PriorityMapProps {
   activeK: number;
 }
 
+// Sub-component to enforce Leaflet viewport size recalculation and fly-to transitions
+function MapController({ selectedStation }: { selectedStation: StationGeoRecord | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    // Invalidate size immediately and after layout rendering
+    map.invalidateSize();
+    const t1 = setTimeout(() => map.invalidateSize(), 150);
+    const t2 = setTimeout(() => map.invalidateSize(), 400);
+    const t3 = setTimeout(() => map.invalidateSize(), 800);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (selectedStation) {
+      map.flyTo([selectedStation.latitude, selectedStation.longitude], 8, {
+        duration: 1.2
+      });
+    }
+  }, [selectedStation, map]);
+
+  return null;
+}
+
 export const PriorityMap: React.FC<PriorityMapProps> = ({ stations }) => {
   const [selectedTier, setSelectedTier] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -32,10 +61,12 @@ export const PriorityMap: React.FC<PriorityMapProps> = ({ stations }) => {
   const filteredStations = useMemo(() => {
     return stations.filter((st) => {
       const matchesTier = selectedTier === 'All' || st.vulnerability_tier === selectedTier;
+      const stName = st.name || '';
+      const stId = String(st.station_id || '');
       const matchesSearch =
         searchQuery === '' ||
-        st.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        st.station_id.includes(searchQuery);
+        stName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stId.includes(searchQuery);
       return matchesTier && matchesSearch;
     });
   }, [stations, selectedTier, searchQuery]);
@@ -57,7 +88,8 @@ export const PriorityMap: React.FC<PriorityMapProps> = ({ stations }) => {
       const res = await api.explainStation(stationId);
       setExplanation(res);
     } catch (err) {
-      console.error('Failed to load station explanation:', err);
+      console.error('Failed to load station explanation from API, using offline engine:', err);
+      setExplanation(getOfflineStationExplanation(stationId));
     } finally {
       setLoadingExplainer(false);
     }
@@ -132,6 +164,7 @@ export const PriorityMap: React.FC<PriorityMapProps> = ({ stations }) => {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
+            <MapController selectedStation={stations.find((s) => s.station_id === selectedStationId) || null} />
 
             {filteredStations.map((st) => (
               <CircleMarker

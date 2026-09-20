@@ -55,6 +55,27 @@ import {
   ShieldCheck
 } from 'lucide-react';
 
+const INITIAL_MAP_STATIONS: StationGeoRecord[] = OFFLINE_STATIONS.map((s) => ({
+  station_id: s.station_id,
+  name: s.station_name,
+  latitude: s.latitude,
+  longitude: s.longitude,
+  elevation_m: 200,
+  mean_temp_c: s.temperature_c,
+  peak_max_temp_c: s.max_temperature_c,
+  peak_heat_index_c: s.heat_index_c,
+  dew_point_c: s.dew_point_c,
+  relative_humidity_pct: s.relative_humidity_pct,
+  dtr_c: 12.5,
+  wind_speed_kmh: 14.0,
+  heat_stress_index: s.heat_stress_index,
+  cluster_id: s.cluster_id,
+  profile_code: s.profile_code,
+  vulnerability_tier: s.vulnerability_tier,
+  priority_level: s.tier_badge,
+  color_code: s.color
+}));
+
 export function App() {
   const [summary, setSummary] = useState<DatasetSummary | null>(null);
   const [evaluations, setEvaluations] = useState<ClusterEvaluation[]>([]);
@@ -64,7 +85,7 @@ export function App() {
   const [hierarchicalComparison, setHierarchicalComparison] = useState<HierarchicalComparison | null>(null);
   const [pcaData, setPcaData] = useState<PCAAnalysis | null>(null);
   const [umapData, setUmapData] = useState<UMAPAnalysis | null>(null);
-  const [mapStations, setMapStations] = useState<StationGeoRecord[]>([]);
+  const [mapStations, setMapStations] = useState<StationGeoRecord[]>(INITIAL_MAP_STATIONS);
   const [featureSeparation, setFeatureSeparation] = useState<FeatureSeparation[]>([]);
   const [annualShifts, setAnnualShifts] = useState<AnnualShift[]>([]);
   const [aiInsights, setAiInsights] = useState<AIInsights | null>(null);
@@ -210,27 +231,7 @@ export function App() {
       setRadarCentroids(radarRes);
     } catch (err: any) {
       console.warn('Backend connection unavailable or offline, loading on-device satellite station dataset:', err);
-      const fallbackStations: StationGeoRecord[] = OFFLINE_STATIONS.map(s => ({
-        station_id: s.station_id,
-        name: s.station_name,
-        latitude: s.latitude,
-        longitude: s.longitude,
-        elevation_m: 200,
-        mean_temp_c: s.temperature_c,
-        peak_max_temp_c: s.max_temperature_c,
-        peak_heat_index_c: s.heat_index_c,
-        dew_point_c: s.dew_point_c,
-        relative_humidity_pct: s.relative_humidity_pct,
-        dtr_c: 12.5,
-        wind_speed_kmh: 14.0,
-        heat_stress_index: s.heat_stress_index,
-        cluster_id: s.cluster_id,
-        profile_code: s.profile_code,
-        vulnerability_tier: s.vulnerability_tier,
-        priority_level: s.tier_badge,
-        color_code: s.color
-      }));
-      setMapStations(fallbackStations);
+      setMapStations(INITIAL_MAP_STATIONS);
       setAppMode('safety');
       setError(null);
     } finally {

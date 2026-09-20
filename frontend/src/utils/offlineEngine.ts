@@ -14,7 +14,8 @@ import type {
   LocationPredictionResponse,
   StationUsed,
   HourlyForecastItem,
-  HourlyForecastResponse
+  HourlyForecastResponse,
+  StationExplanation
 } from '../types';
 
 export function haversineDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -1700,6 +1701,56 @@ export function getOfflineHourlyForecast(
     peak_tier: peakTier,
     generated_at: new Date().toISOString(),
     hourly
+  };
+}
+
+export function getOfflineStationExplanation(stationId: string): StationExplanation {
+  const station = OFFLINE_STATIONS.find(s => s.station_id === stationId) || OFFLINE_STATIONS[0];
+  
+  // Calculate percentile rankings across all 46 stations
+  const getPct = (val: number, extractor: (s: StationLiveSummaryItem) => number) => {
+    const countBelow = OFFLINE_STATIONS.filter(s => extractor(s) <= val).length;
+    return Math.round((countBelow / OFFLINE_STATIONS.length) * 100);
+  };
+
+  const pctMaxTemp = getPct(station.max_temperature_c, s => s.max_temperature_c);
+  const pctHeatIndex = getPct(station.heat_index_c, s => s.heat_index_c);
+  const pctDewp = getPct(station.dew_point_c, s => s.dew_point_c);
+  const pctHumidity = getPct(station.relative_humidity_pct, s => s.relative_humidity_pct);
+
+  const profileTitles: Record<number, string> = {
+    0: 'Coastal Humid Traps',
+    1: 'Dry Continental Blast',
+    2: 'Plateau Moderate Heat',
+    3: 'Hyperthermic Hotspots'
+  };
+
+  const profileTitle = profileTitles[station.cluster_id] || `Profile ${station.profile_code}`;
+
+  return {
+    station_id: station.station_id,
+    name: station.station_name,
+    latitude: station.latitude,
+    longitude: station.longitude,
+    cluster_id: station.cluster_id,
+    profile_title: profileTitle,
+    vulnerability_tier: (station.vulnerability_tier as any) || "High",
+    priority_level: station.tier_badge,
+    color_code: station.color,
+    heat_stress_index: station.heat_stress_index,
+    assignment_confidence_pct: 92,
+    assignment_confidence_tier: "High",
+    assignment_confidence_badge: "High Confidence",
+    assignment_confidence_color: "#10B981",
+    is_borderline: false,
+    borderline_advisory: null,
+    key_contributing_indicators: [
+      { name: 'Peak Ambient Temperature', value: `${station.max_temperature_c}°C`, percentile: pctMaxTemp, importance: 92 },
+      { name: 'Rothfusz Heat Index', value: `${station.heat_index_c}°C`, percentile: pctHeatIndex, importance: 88 },
+      { name: 'Dew Point / Moisture', value: `${station.dew_point_c}°C`, percentile: pctDewp, importance: 74 },
+      { name: 'Relative Humidity', value: `${station.relative_humidity_pct}%`, percentile: pctHumidity, importance: 68 }
+    ],
+    explanation: `${station.station_name} exhibits ${station.vulnerability_tier} priority heat stress under ${profileTitle}. Peak diurnal temperature reaches ${station.max_temperature_c}°C with an effective heat index of ${station.heat_index_c}°C (top ${100 - pctHeatIndex}% nationally). Rapid hydration and shaded recovery are strongly indicated.`
   };
 }
 

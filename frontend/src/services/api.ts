@@ -56,7 +56,9 @@ import {
   getOfflineFamilyStatus,
   getOfflineAssistantChat,
   interpolateLocationFeaturesOffline,
-  getOfflineHourlyForecast
+  getOfflineHourlyForecast,
+  getOfflineStationExplanation,
+  OFFLINE_STATIONS
 } from '../utils/offlineEngine';
 
 const API_BASE = '/api';
@@ -115,15 +117,42 @@ export const api = {
   },
 
   async getMapStations(limit: number = 500): Promise<StationGeoRecord[]> {
-    const res = await fetch(`${API_BASE}/analysis/map-stations?limit=${limit}`);
-    if (!res.ok) throw new Error('Failed to fetch map stations');
-    return res.json();
+    try {
+      const res = await fetch(`${API_BASE}/analysis/map-stations?limit=${limit}`);
+      if (!res.ok) throw new Error('Failed to fetch map stations');
+      return await res.json();
+    } catch {
+      return OFFLINE_STATIONS.map((s) => ({
+        station_id: s.station_id,
+        name: s.station_name,
+        latitude: s.latitude,
+        longitude: s.longitude,
+        elevation_m: 200,
+        mean_temp_c: s.temperature_c,
+        peak_max_temp_c: s.max_temperature_c,
+        peak_heat_index_c: s.heat_index_c,
+        dew_point_c: s.dew_point_c,
+        relative_humidity_pct: s.relative_humidity_pct,
+        dtr_c: 12.5,
+        wind_speed_kmh: 14.0,
+        heat_stress_index: s.heat_stress_index,
+        cluster_id: s.cluster_id,
+        profile_code: s.profile_code,
+        vulnerability_tier: s.vulnerability_tier,
+        priority_level: s.tier_badge,
+        color_code: s.color
+      }));
+    }
   },
 
   async explainStation(stationId: string): Promise<StationExplanation> {
-    const res = await fetch(`${API_BASE}/analysis/explain-station/${stationId}`);
-    if (!res.ok) throw new Error('Failed to explain station');
-    return res.json();
+    try {
+      const res = await fetch(`${API_BASE}/analysis/explain-station/${stationId}`);
+      if (!res.ok) throw new Error('Failed to explain station');
+      return await res.json();
+    } catch {
+      return getOfflineStationExplanation(stationId);
+    }
   },
 
   async getFeatureSeparation(): Promise<FeatureSeparation[]> {
