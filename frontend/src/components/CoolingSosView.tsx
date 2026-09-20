@@ -141,47 +141,47 @@ export const CoolingSosView: React.FC<CoolingSosViewProps> = ({
 
       {/* Emergency Hotline Quick Access */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <a
-          href="tel:108"
+        <button
+          type="button"
           onClick={(e) => initiatePhoneCall('108', e)}
-          className="bg-red-950/40 border border-red-500/40 hover:border-red-500 p-4 rounded-2xl flex items-center gap-3 transition shadow-lg group active:scale-98"
+          className="bg-red-950/40 border border-red-500/40 hover:border-red-500 p-4 rounded-2xl flex items-center gap-3 transition shadow-lg group active:scale-98 text-left cursor-pointer w-full"
         >
-          <div className="w-10 h-10 bg-red-600 text-white rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition">
+          <div className="w-10 h-10 bg-red-600 text-white rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition shrink-0">
             <PhoneCall className="w-5 h-5" />
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-red-400">Medical Emergency</div>
             <div className="text-lg font-black text-white">108 Ambulance</div>
           </div>
-        </a>
+        </button>
 
-        <a
-          href="tel:112"
+        <button
+          type="button"
           onClick={(e) => initiatePhoneCall('112', e)}
-          className="bg-amber-950/30 border border-amber-500/40 hover:border-amber-500 p-4 rounded-2xl flex items-center gap-3 transition shadow-lg group active:scale-98"
+          className="bg-amber-950/30 border border-amber-500/40 hover:border-amber-500 p-4 rounded-2xl flex items-center gap-3 transition shadow-lg group active:scale-98 text-left cursor-pointer w-full"
         >
-          <div className="w-10 h-10 bg-amber-600 text-white rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition">
+          <div className="w-10 h-10 bg-amber-600 text-white rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition shrink-0">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-amber-400">National Emergency</div>
             <div className="text-lg font-black text-white">112 Helpline</div>
           </div>
-        </a>
+        </button>
 
-        <a
-          href="tel:1078"
+        <button
+          type="button"
           onClick={(e) => initiatePhoneCall('1078', e)}
-          className="bg-blue-950/30 border border-blue-500/40 hover:border-blue-500 p-4 rounded-2xl flex items-center gap-3 transition shadow-lg group active:scale-98"
+          className="bg-blue-950/30 border border-blue-500/40 hover:border-blue-500 p-4 rounded-2xl flex items-center gap-3 transition shadow-lg group active:scale-98 text-left cursor-pointer w-full"
         >
-          <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition">
+          <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center font-black group-hover:scale-110 transition shrink-0">
             <AlertOctagon className="w-5 h-5" />
           </div>
           <div>
             <div className="text-[10px] uppercase font-bold text-blue-400">Disaster Management</div>
             <div className="text-lg font-black text-white">1078 Control Room</div>
           </div>
-        </a>
+        </button>
       </div>
 
       {/* Section 1: Cooling Centers & Water Points */}

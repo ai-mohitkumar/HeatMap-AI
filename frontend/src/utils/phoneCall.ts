@@ -78,13 +78,20 @@ export function cleanPhoneNumber(raw: string): string {
 
 /**
  * Directly opens the mobile device's native calling/dialer app with the specified number.
- * Uses a multi-tiered approach:
- * 1. Sanitizes the phone number into standard tel: protocol.
- * 2. Navigates `window.location.href` to trigger the system intent.
- * 3. Fallback to programmatic anchor element click.
+ * Uses an Android-WebView-safe, cross-platform architecture:
+ * 1. Cancels any default link navigation so Android WebView doesn't misinterpret "tel:112" as "http://tel:112/".
+ * 2. Uses an Android Intent URL (intent://...#Intent;action=android.intent.action.DIAL) to directly fire the phone app.
+ * 3. Uses a hidden 1px iframe to dispatch the tel: protocol without navigating the parent window.
+ * 4. Fallback to programmatic anchor dispatch with target="_system".
  */
-export function initiatePhoneCall(rawPhone: string, event?: { stopPropagation?: () => void; preventDefault?: () => void }): boolean {
+export function initiatePhoneCall(
+  rawPhone: string,
+  event?: { stopPropagation?: () => void; preventDefault?: () => void }
+): boolean {
   if (event) {
+    if (typeof event.preventDefault === 'function') {
+      event.preventDefault();
+    }
     if (typeof event.stopPropagation === 'function') {
       event.stopPropagation();
     }
@@ -97,28 +104,71 @@ export function initiatePhoneCall(rawPhone: string, event?: { stopPropagation?: 
   }
 
   const telUri = `tel:${cleaned}`;
+  const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '');
 
-  try {
-    // Primary mechanism for mobile browsers, PWAs, Android Chrome and iOS Safari:
-    // Direct location assignment opens the system dialer with the phone number pre-filled.
-    window.location.href = telUri;
-    return true;
-  } catch (err) {
-    console.warn('[PhoneCall] window.location.href failed, attempting anchor dispatch:', err);
+  // 1. Android Intent dispatch (Gold standard for Android WebViews & Chrome:
+  // Directly fires android.intent.action.DIAL so WebView never treats "tel:112" as host:port http://tel:112/)
+  if (isAndroid) {
     try {
-      const anchor = document.createElement('a');
-      anchor.href = telUri;
-      anchor.rel = 'noopener';
-      anchor.style.display = 'none';
-      document.body.appendChild(anchor);
-      anchor.click();
+      const intentUri = `intent://${cleaned}#Intent;scheme=tel;action=android.intent.action.DIAL;end`;
+      const intentAnchor = document.createElement('a');
+      intentAnchor.href = intentUri;
+      intentAnchor.target = '_system';
+      intentAnchor.style.display = 'none';
+      document.body.appendChild(intentAnchor);
+      intentAnchor.click();
       setTimeout(() => {
-        document.body.removeChild(anchor);
-      }, 300);
+        try {
+          document.body.removeChild(intentAnchor);
+        } catch {}
+      }, 500);
       return true;
-    } catch (fallbackErr) {
-      console.error('[PhoneCall] Failed to open calling app:', fallbackErr);
-      return false;
+    } catch (intentErr) {
+      console.warn('[PhoneCall] Android intent dispatch fallback:', intentErr);
     }
+  }
+
+  // 2. Safe Hidden Iframe dispatch (Universal for iOS Safari & Android:
+  // Setting an invisible subframe src NEVER navigates the top window and never triggers net::ERR_CLEARTEXT_NOT_PERMITTED)
+  try {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.top = '-9999px';
+    iframe.style.left = '-9999px';
+    iframe.style.width = '1px';
+    iframe.style.height = '1px';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
+    iframe.setAttribute('aria-hidden', 'true');
+    iframe.src = telUri;
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      try {
+        document.body.removeChild(iframe);
+      } catch {}
+    }, 1500);
+    return true;
+  } catch (iframeErr) {
+    console.warn('[PhoneCall] Iframe dispatch error:', iframeErr);
+  }
+
+  // 3. Fallback programmatic anchor dispatch with target="_system" / "_top"
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = telUri;
+    anchor.target = '_system';
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(anchor);
+      } catch {}
+    }, 500);
+    return true;
+  } catch (fallbackErr) {
+    console.error('[PhoneCall] Failed to open calling app:', fallbackErr);
+    return false;
   }
 }

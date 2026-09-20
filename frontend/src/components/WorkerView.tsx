@@ -81,14 +81,14 @@ export const WorkerView: React.FC<WorkerViewProps> = ({
             </div>
           </div>
 
-          <a
-            href="tel:108"
+          <button
+            type="button"
             onClick={(e) => initiatePhoneCall('108', e)}
-            className="bg-red-600 hover:bg-red-500 text-white font-black text-sm px-4 py-3 rounded-2xl flex items-center gap-2 border-2 border-white shadow-xl animate-pulse active:scale-95"
+            className="bg-red-600 hover:bg-red-500 text-white font-black text-sm px-4 py-3 rounded-2xl flex items-center gap-2 border-2 border-white shadow-xl animate-pulse active:scale-95 cursor-pointer"
           >
             <PhoneCall className="w-5 h-5" />
             <span className="hidden sm:inline">CALL 108</span>
-          </a>
+          </button>
         </div>
       </div>
 

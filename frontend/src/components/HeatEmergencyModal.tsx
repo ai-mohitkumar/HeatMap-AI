@@ -189,10 +189,10 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
           {/* Instant Emergency Action Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* 1. Direct 108 Emergency Ambulance Call */}
-            <a
-              href="tel:108"
+            <button
+              type="button"
               onClick={(e) => initiatePhoneCall('108', e)}
-              className="flex items-center gap-3 p-3.5 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group"
+              className="flex items-center gap-3 p-3.5 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left w-full cursor-pointer"
             >
               <div className="p-2 bg-white/20 rounded-xl shrink-0 group-hover:rotate-12 transition">
                 <PhoneCall className="w-5 h-5 text-white" />
@@ -201,13 +201,13 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
                 <span className="block text-xs font-normal opacity-90">Medical Emergency</span>
                 <span>{getTranslation(lang, 'call_108', 'Call 108 Ambulance')}</span>
               </div>
-            </a>
+            </button>
 
             {/* 2. Direct 112 National Emergency Helpline Call */}
-            <a
-              href="tel:112"
+            <button
+              type="button"
               onClick={(e) => initiatePhoneCall('112', e)}
-              className="flex items-center gap-3 p-3.5 bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group"
+              className="flex items-center gap-3 p-3.5 bg-gradient-to-r from-amber-600 to-orange-700 hover:from-amber-500 hover:to-orange-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left w-full cursor-pointer"
             >
               <div className="p-2 bg-white/20 rounded-xl shrink-0 group-hover:rotate-12 transition">
                 <PhoneCall className="w-5 h-5 text-white" />
@@ -216,7 +216,7 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
                 <span className="block text-xs font-normal opacity-90">National Emergency</span>
                 <span>Call 112 Helpline</span>
               </div>
-            </a>
+            </button>
 
             {/* 3. Navigate to Nearest Cooling Shelter */}
             <button

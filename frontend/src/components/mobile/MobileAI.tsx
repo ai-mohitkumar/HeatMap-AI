@@ -377,22 +377,22 @@ During the peak radiant stress window (${peakWindow}), avoid direct unshaded tra
               {/* Emergency Fast Dial Actions */}
               {msg.isEmergency && (
                 <div className="pt-2 border-t border-rose-500/30 flex gap-2">
-                  <a
-                    href="tel:108"
+                  <button
+                    type="button"
                     onClick={(e) => initiatePhoneCall('108', e)}
-                    className="flex-1 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[11px] flex items-center justify-center gap-1 shadow transition active:scale-95"
+                    className="flex-1 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[11px] flex items-center justify-center gap-1 shadow transition active:scale-95 cursor-pointer"
                   >
                     <PhoneCall className="w-3 h-3" />
                     <span>Call 108 Ambulance</span>
-                  </a>
-                  <a
-                    href="tel:112"
+                  </button>
+                  <button
+                    type="button"
                     onClick={(e) => initiatePhoneCall('112', e)}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] flex items-center justify-center gap-1 border border-slate-700 transition active:scale-95"
+                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] flex items-center justify-center gap-1 border border-slate-700 transition active:scale-95 cursor-pointer"
                   >
                     <PhoneCall className="w-3 h-3 text-red-400" />
                     <span>Call 112</span>
-                  </a>
+                  </button>
                 </div>
               )}
 

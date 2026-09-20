@@ -7,7 +7,7 @@ import type {
   WelfareCheckinRecord
 } from '../types';
 import { getTranslation } from '../utils/localization';
-import { initiatePhoneCall, cleanPhoneNumber } from '../utils/phoneCall';
+import { initiatePhoneCall } from '../utils/phoneCall';
 import {
   Heart,
   PlusCircle,
@@ -171,30 +171,30 @@ export const FamilyCareView: React.FC<FamilyCareViewProps> = ({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <a
-            href="tel:108"
+          <button
+            type="button"
             onClick={(e) => initiatePhoneCall('108', e)}
-            className="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 transition shadow-lg active:scale-95 group"
+            className="px-3.5 py-2 bg-red-600 hover:bg-red-500 text-white font-black text-xs rounded-xl flex items-center gap-1.5 transition shadow-lg active:scale-95 group cursor-pointer"
           >
             <PhoneCall className="w-3.5 h-3.5 text-white group-hover:rotate-12 transition" />
             <span>108 Ambulance</span>
-          </a>
-          <a
-            href="tel:112"
+          </button>
+          <button
+            type="button"
             onClick={(e) => initiatePhoneCall('112', e)}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow active:scale-95 group"
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow active:scale-95 group cursor-pointer"
           >
             <PhoneCall className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition" />
             <span>112 National</span>
-          </a>
-          <a
-            href="tel:14567"
+          </button>
+          <button
+            type="button"
             onClick={(e) => initiatePhoneCall('14567', e)}
-            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-pink-300 border border-pink-500/40 font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow active:scale-95 group"
+            className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-pink-300 border border-pink-500/40 font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow active:scale-95 group cursor-pointer"
           >
             <PhoneCall className="w-3.5 h-3.5 text-pink-400 group-hover:rotate-12 transition" />
             <span>14567 Elderline</span>
-          </a>
+          </button>
         </div>
       </div>
 
@@ -358,18 +358,18 @@ export const FamilyCareView: React.FC<FamilyCareViewProps> = ({
                   <Share2 className="w-3.5 h-3.5" />
                   <span>Alert via WhatsApp</span>
                 </a>
-                <a
-                  href={`tel:${cleanPhoneNumber(st.phone_number || (st.name === 'Papa' ? '+919876543210' : st.name === 'Dadi' ? '+919812345678' : st.name === 'Simran' ? '+919898765432' : '108'))}`}
+                <button
+                  type="button"
                   onClick={(e) => {
                     const phoneToCall = st.phone_number || (st.name === 'Papa' ? '+919876543210' : st.name === 'Dadi' ? '+919812345678' : st.name === 'Simran' ? '+919898765432' : '108');
                     initiatePhoneCall(phoneToCall, e);
                   }}
-                  className="bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold py-2 px-3.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow active:scale-95 group"
+                  className="bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold py-2 px-3.5 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow active:scale-95 group cursor-pointer"
                   title={`Call ${st.name} directly on phone`}
                 >
                   <PhoneCall className="w-3.5 h-3.5 text-white group-hover:rotate-12 transition" />
                   <span>Call {st.name}</span>
-                </a>
+                </button>
               </div>
             </div>
           ))}

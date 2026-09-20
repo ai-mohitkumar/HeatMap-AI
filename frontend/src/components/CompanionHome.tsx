@@ -1070,14 +1070,14 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
                   {triageResult.badge}
                 </span>
                 {triageResult.urgency === 'critical' && (
-                  <a
-                    href={`tel:${triageResult.emergency_call_number}`}
+                  <button
+                    type="button"
                     onClick={(e) => initiatePhoneCall(triageResult.emergency_call_number, e)}
-                    className="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded-lg flex items-center gap-1.5 animate-bounce"
+                    className="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded-lg flex items-center gap-1.5 animate-bounce cursor-pointer"
                   >
                     <PhoneCall className="w-3 h-3" />
                     Call {triageResult.emergency_call_number}
-                  </a>
+                  </button>
                 )}
               </div>
               <p className="font-bold text-white">
@@ -1216,14 +1216,14 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <a
-            href="tel:108"
+          <button
+            type="button"
             onClick={(e) => initiatePhoneCall('108', e)}
-            className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-lg active:scale-95"
+            className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-lg active:scale-95 cursor-pointer"
           >
             <PhoneCall className="w-3.5 h-3.5" />
             108 Ambulance
-          </a>
+          </button>
           <button
             onClick={() => onNavigateTab('sos')}
             className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold text-xs rounded-xl transition"

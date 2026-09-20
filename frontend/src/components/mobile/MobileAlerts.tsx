@@ -234,31 +234,31 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
                 <span>Send Emergency SOS SMS</span>
               </a>
 
-              <a
-                href="tel:112"
+              <button
+                type="button"
                 onClick={(e) => initiatePhoneCall('112', e)}
                 className="px-4 py-2 rounded-xl bg-white text-red-700 font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition active:scale-98"
               >
                 <PhoneCall className="w-3.5 h-3.5 text-red-600" />
                 <span>Call 112</span>
-              </a>
+              </button>
             </div>
           </div>
 
           {/* Directory of Emergency Helplines */}
           <div className="space-y-2">
             <span className="text-xs font-black text-slate-300 block uppercase tracking-wider px-1">
-              National Emergency Helplines (Direct 1-Tap Dial)
+              National Emergency Helplines (24x7 Free)
             </span>
 
             {emergencyHelplines.map((item) => (
               <div
                 key={item.number}
-                className="rounded-xl bg-[#0D152D] border border-slate-800 p-3 flex items-center justify-between shadow-md hover:border-slate-700 transition"
+                className="p-3 rounded-2xl bg-[#0F1A36] border border-slate-800 flex items-center justify-between gap-3 shadow-md"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 font-black text-xs font-mono">
-                    {item.number}
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-slate-800/80 text-white flex items-center justify-center font-black text-xs shrink-0">
+                    {item.badge}
                   </div>
                   <div>
                     <div className="flex items-center gap-1.5">
@@ -271,14 +271,14 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
                   </div>
                 </div>
 
-                <a
-                  href={`tel:${item.number}`}
+                <button
+                  type="button"
                   onClick={(e) => initiatePhoneCall(item.number, e)}
                   className={`px-3 py-1.5 rounded-lg font-black text-xs shadow flex items-center gap-1 transition active:scale-95 ${item.color}`}
                 >
                   <PhoneCall className="w-3 h-3" />
                   <span>Call {item.number}</span>
-                </a>
+                </button>
               </div>
             ))}
           </div>
@@ -365,14 +365,14 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
                   </ol>
                 </div>
 
-                <a
-                  href="tel:108"
+                <button
+                  type="button"
                   onClick={(e) => initiatePhoneCall('108', e)}
                   className="mt-2 w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
                 >
                   <PhoneCall className="w-3.5 h-3.5" />
                   <span>Call 108 Ambulance Now</span>
-                </a>
+                </button>
               </div>
             )}
           </div>
