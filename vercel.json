@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "node -e \"const fs=require('fs'),{execSync}=require('child_process');if(fs.existsSync('frontend')){execSync('npm --prefix frontend install && npm --prefix frontend run build',{stdio:'inherit'});if(!fs.existsSync('dist')){fs.cpSync('frontend/dist','dist',{recursive:true});}}else{execSync('npm run build',{stdio:'inherit'});}\"",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
