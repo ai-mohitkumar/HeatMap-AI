@@ -136,7 +136,8 @@ async function acquireFromIpFallback(onStatusUpdate?: (status: string) => void):
   // Try backend proxy first to avoid client CORS
   try {
     const res = await fetch('/api/geo/ip', { signal: AbortSignal.timeout(3500) });
-    if (res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('application/json')) {
       const data = await res.json();
       if (data.latitude && data.longitude) {
         return formatResult(data.latitude, data.longitude, 5000, 'ip_geolocation', data.city || data.district);
@@ -149,7 +150,8 @@ async function acquireFromIpFallback(onStatusUpdate?: (status: string) => void):
   // Try public fast endpoint (freeipapi.com)
   try {
     const res = await fetch('https://freeipapi.com/api/json', { signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('application/json')) {
       const data = await res.json();
       if (data.latitude && data.longitude) {
         return formatResult(data.latitude, data.longitude, 10000, 'ip_geolocation', data.cityName);

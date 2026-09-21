@@ -3,7 +3,7 @@
  * Enables 100% offline operation, PWA installation, and zero-network resilience.
  */
 
-const CACHE_NAME = 'heatshield-v1';
+const CACHE_NAME = 'heatshield-v3';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -27,6 +27,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cache) => {
           if (cache !== CACHE_NAME) {
+            console.log('[HeatShield SW] Evicting legacy cache:', cache);
             return caches.delete(cache);
           }
         })
@@ -38,12 +39,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // For API calls: Network-first, fall back to cached response
+  // 1. For API calls: Network-first, ONLY cache genuine JSON responses (NEVER cache HTML SPA fallbacks)
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          if (response.status === 200) {
+          const contentType = response.headers.get('content-type') || '';
+          if (response.ok && contentType.includes('application/json')) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
@@ -54,24 +56,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For static assets: Cache-first with network fallback
+  // 2. For navigation / HTML documents: Network-first to always serve the latest production deployment
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('.html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => cached || caches.match('/index.html'));
+        })
+    );
+    return;
+  }
+
+  // 3. For content-hashed static assets (JS, CSS, SVG): Cache-first with network fallback
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch updated version in background
-        fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-          }
-        }).catch(() => {/* Ignore background fetch failure in offline mode */});
         return cachedResponse;
       }
-      return fetch(event.request).then((response) => {
-        if (response && response.status === 200) {
-          const clone = response.clone();
+      return fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const clone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
         }
-        return response;
+        return networkResponse;
       });
     })
   );
