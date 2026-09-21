@@ -49,6 +49,7 @@ import { AllStationsLiveView } from './components/AllStationsLiveView';
 import { ClimateIntelligenceLab } from './components/ClimateIntelligenceLab';
 import { VillageDistrictExplorer } from './components/VillageDistrictExplorer';
 import { DeviceShowcaseView } from './components/DeviceShowcaseView';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import {
   AlertCircle,
   Flame,
@@ -272,7 +273,7 @@ export function App() {
       setProfiles(res.profiles);
       setHierarchicalComparison(res.hierarchical_comparison);
 
-      const [updatedMap, updatedPCA, updatedUMAP, updatedSummary, updatedInsights, updatedStability, updatedRadar] = await Promise.all([
+      const [updatedMap, updatedPCA, updatedUMAP, updatedSummary, updatedInsights, updatedStability, updatedRadar] = await Promise.allSettled([
         api.getMapStations(500),
         api.getPCAAnalysis(),
         api.getUMAPAnalysis(),
@@ -281,16 +282,15 @@ export function App() {
         api.getClusterStability(k),
         api.getRadarCentroids(k)
       ]);
-      setMapStations(updatedMap);
-      setPcaData(updatedPCA);
-      setUmapData(updatedUMAP);
-      setSummary(updatedSummary);
-      setAiInsights(updatedInsights);
-      setStability(updatedStability);
-      setRadarCentroids(updatedRadar);
+      if (updatedMap.status === 'fulfilled') setMapStations(updatedMap.value);
+      if (updatedPCA.status === 'fulfilled') setPcaData(updatedPCA.value);
+      if (updatedUMAP.status === 'fulfilled') setUmapData(updatedUMAP.value);
+      if (updatedSummary.status === 'fulfilled') setSummary(updatedSummary.value);
+      if (updatedInsights.status === 'fulfilled') setAiInsights(updatedInsights.value);
+      if (updatedStability.status === 'fulfilled') setStability(updatedStability.value);
+      if (updatedRadar.status === 'fulfilled') setRadarCentroids(updatedRadar.value);
     } catch (err: any) {
-      console.error('Failed to set K:', err);
-      alert(`Error updating cluster count: ${err.message}`);
+      console.warn('Set K handled with fallback model:', err);
     } finally {
       setIsUpdatingK(false);
     }
@@ -302,16 +302,16 @@ export function App() {
       setActiveYear(year);
       await api.setYearFilter(year);
 
-      const [updatedSummary, updatedProfiles, updatedMap] = await Promise.all([
+      const [updatedSummary, updatedProfiles, updatedMap] = await Promise.allSettled([
         api.getDatasetSummary(),
         api.getProfiles(),
         api.getMapStations(500)
       ]);
-      setSummary(updatedSummary);
-      setProfiles(updatedProfiles);
-      setMapStations(updatedMap);
+      if (updatedSummary.status === 'fulfilled') setSummary(updatedSummary.value);
+      if (updatedProfiles.status === 'fulfilled') setProfiles(updatedProfiles.value);
+      if (updatedMap.status === 'fulfilled') setMapStations(updatedMap.value);
     } catch (err: any) {
-      console.error('Failed to set year filter:', err);
+      console.warn('Set year filter handled with fallback:', err);
     } finally {
       setIsUpdatingK(false);
     }
@@ -506,6 +506,18 @@ export function App() {
         onExportReport={handleExportReport}
         displayMode={displayMode}
         onSetDisplayMode={setDisplayMode}
+        dataQuality={dataQuality}
+        coverage={coverage}
+        evaluations={evaluations}
+        optimalKData={optimalKData}
+        featureSeparation={featureSeparation}
+        stability={stability}
+        radarCentroids={radarCentroids}
+        pcaData={pcaData}
+        umapData={umapData}
+        hierarchicalComparison={hierarchicalComparison}
+        annualShifts={annualShifts}
+        onSelectK={handleSelectK}
       />
     );
   }
@@ -529,6 +541,7 @@ export function App() {
           if (mode === 'safety') setSidebarTab('home');
           else if (mode === 'research') setSidebarTab('research');
           else if (mode === 'dashboard') setSidebarTab('insights');
+          else if (mode === 'lab') setSidebarTab('research');
         }}
         onOpenAIAnalyst={() => setIsAnalystOpen(true)}
         onSelectK={handleSelectK}
@@ -578,7 +591,7 @@ export function App() {
           )}
 
           {/* 2. Unified Command Center Hub (Matches uploaded reference mockup!) */}
-          {appMode !== 'lab' && sidebarTab === 'home' && (
+          {appMode === 'safety' && sidebarTab === 'home' && (
             <HeatShieldHub
               selectedStationId={selectedSafetyStationId}
               onSelectStation={(stId) => {
@@ -849,62 +862,64 @@ export function App() {
                 </button>
               </div>
 
-              {researchViewTab === 'lab' ? (
-                <ClimateIntelligenceLab activeK={activeK} />
-              ) : (
-                <>
-                  {/* 1. Methodology Flowchart */}
-                  <MethodologyPanel />
+              <ErrorBoundary fallbackTitle="Research & Viva Defense Module">
+                {researchViewTab === 'lab' ? (
+                  <ClimateIntelligenceLab activeK={activeK} />
+                ) : (
+                  <>
+                    {/* 1. Methodology Flowchart */}
+                    <MethodologyPanel />
 
-                  {/* 2. Data Quality & Coverage Audit */}
-                  <DataQualityCard quality={dataQuality} coverage={coverage} />
+                    {/* 2. Data Quality & Coverage Audit */}
+                    <DataQualityCard quality={dataQuality} coverage={coverage} />
 
-                  {/* 3. Model Evaluation, Multi-K Table, Stability & ANOVA */}
-                  <ModelEvaluation
-                    evaluations={evaluations}
-                    optimalKData={optimalKData}
-                    featureSeparation={featureSeparation}
-                    stability={stability}
-                    activeK={activeK}
-                    onSelectK={handleSelectK}
-                  />
+                    {/* 3. Model Evaluation, Multi-K Table, Stability & ANOVA */}
+                    <ModelEvaluation
+                      evaluations={evaluations}
+                      optimalKData={optimalKData}
+                      featureSeparation={featureSeparation}
+                      stability={stability}
+                      activeK={activeK}
+                      onSelectK={handleSelectK}
+                    />
 
-                  {/* 4. Cluster Profile Analysis & Radar Centroids */}
-                  <div className="space-y-6">
-                    <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                        Cluster Profile Biometeorological Characterization
-                      </h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Detailed environmental vulnerability profiles and normalized centroid geometry
-                      </p>
+                    {/* 4. Cluster Profile Analysis & Radar Centroids */}
+                    <div className="space-y-6">
+                      <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
+                        <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                          Cluster Profile Biometeorological Characterization
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Detailed environmental vulnerability profiles and normalized centroid geometry
+                        </p>
+                      </div>
+                      <VulnerabilityProfilesView profiles={profiles} />
+                      <ClusterRadarChart radarData={radarCentroids} profiles={profiles} activeK={activeK} />
                     </div>
-                    <VulnerabilityProfilesView profiles={profiles} />
-                    <ClusterRadarChart radarData={radarCentroids} profiles={profiles} activeK={activeK} />
-                  </div>
 
-                  {/* 5. PCA & UMAP Dimensionality Reduction */}
-                  <PCAVisualizer pcaData={pcaData} umapData={umapData} activeK={activeK} />
+                    {/* 5. PCA & UMAP Dimensionality Reduction */}
+                    <PCAVisualizer pcaData={pcaData} umapData={umapData} activeK={activeK} />
 
-                  {/* 6. Hierarchical Clustering Comparison */}
-                  <HierarchicalComparisonView
-                    comparison={hierarchicalComparison}
-                    activeK={activeK}
-                  />
+                    {/* 6. Hierarchical Clustering Comparison */}
+                    <HierarchicalComparisonView
+                      comparison={hierarchicalComparison}
+                      activeK={activeK}
+                    />
 
-                  {/* 7. Regional Priority Map */}
-                  <PriorityMap stations={mapStations} activeK={activeK} />
+                    {/* 7. Regional Priority Map */}
+                    <PriorityMap stations={mapStations} activeK={activeK} />
 
-                  {/* 8. Temporal Profile Transitions */}
-                  <TemporalAnalysisView
-                    annualShifts={annualShifts}
-                    stations={mapStations.map((st) => ({ station_id: st.station_id, name: st.name }))}
-                  />
+                    {/* 8. Temporal Profile Transitions */}
+                    <TemporalAnalysisView
+                      annualShifts={annualShifts}
+                      stations={mapStations.map((st) => ({ station_id: st.station_id, name: st.name }))}
+                    />
 
-                  {/* 9. Scientific Limitations */}
-                  <ScientificLimitationsCard />
-                </>
-              )}
+                    {/* 9. Scientific Limitations */}
+                    <ScientificLimitationsCard />
+                  </>
+                )}
+              </ErrorBoundary>
             </div>
           )}
 

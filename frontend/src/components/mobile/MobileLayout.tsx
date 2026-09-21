@@ -20,6 +20,15 @@ import { VillageDistrictExplorer } from '../VillageDistrictExplorer';
 import { DeviceShowcaseView } from '../DeviceShowcaseView';
 import { ClimateIntelligenceLab } from '../ClimateIntelligenceLab';
 import { AIInsightsView } from '../AIInsightsView';
+import { MethodologyPanel } from '../MethodologyPanel';
+import { DataQualityCard } from '../DataQualityCard';
+import { ModelEvaluation } from '../ModelEvaluation';
+import { ClusterRadarChart } from '../ClusterRadarChart';
+import { PCAVisualizer } from '../PCAVisualizer';
+import { HierarchicalComparisonView } from '../HierarchicalComparisonView';
+import { ScientificLimitationsCard } from '../ScientificLimitationsCard';
+import { TemporalAnalysisView } from '../TemporalAnalysisView';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface MobileLayoutProps {
   locationName: string;
@@ -47,6 +56,18 @@ interface MobileLayoutProps {
   onExportReport: () => void;
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
+  dataQuality?: any;
+  coverage?: any;
+  evaluations?: any[];
+  optimalKData?: any;
+  featureSeparation?: any[];
+  stability?: any;
+  radarCentroids?: any;
+  pcaData?: any;
+  umapData?: any;
+  hierarchicalComparison?: any;
+  annualShifts?: any[];
+  onSelectK?: (k: number) => void;
 }
 
 export const MobileLayout: React.FC<MobileLayoutProps> = ({
@@ -63,6 +84,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   selectedStationId,
   activeK,
   profiles,
+  mapStations,
   aiInsights,
   customLocation,
   onSelectStation,
@@ -72,10 +94,23 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   gpsStatusMessage,
   onExportReport,
   displayMode,
-  onSetDisplayMode
+  onSetDisplayMode,
+  dataQuality,
+  coverage,
+  evaluations,
+  optimalKData,
+  featureSeparation,
+  stability,
+  radarCentroids,
+  pcaData,
+  umapData,
+  hierarchicalComparison,
+  annualShifts,
+  onSelectK
 }) => {
   const [mobileTab, setMobileTab] = useState<MobileTab>('home');
   const [secondaryRoute, setSecondaryRoute] = useState<string | null>(null);
+  const [mobileResearchSubTab, setMobileResearchSubTab] = useState<'lab' | 'validation' | 'formulas'>('lab');
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
 
@@ -226,15 +261,92 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
           </div>
         )}
 
-        {secondaryRoute === 'mobile_research' && (
-          <div className="p-3.5 space-y-3 pb-24">
-            <button
-              onClick={() => setSecondaryRoute(null)}
-              className="text-xs text-blue-400 font-bold mb-2 flex items-center gap-1"
-            >
-              ← Back to Overview
-            </button>
-            <MobileResearch />
+        {(secondaryRoute === 'research' || secondaryRoute === 'mobile_research') && (
+          <div className="p-3.5 space-y-4 pb-24">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setSecondaryRoute(null)}
+                className="text-xs text-blue-400 font-bold flex items-center gap-1 hover:text-blue-300 transition"
+              >
+                ← Back to Overview
+              </button>
+              <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-[10px] font-extrabold uppercase border border-indigo-500/30">
+                Research &amp; Viva Defense Hub
+              </span>
+            </div>
+
+            {/* Mobile Research Subtab Switcher */}
+            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-bold">
+              <button
+                onClick={() => setMobileResearchSubTab('lab')}
+                className={`py-2 px-1 rounded-lg text-center transition ${
+                  mobileResearchSubTab === 'lab'
+                    ? 'bg-purple-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                1. Lab (RQ1–6)
+              </button>
+              <button
+                onClick={() => setMobileResearchSubTab('validation')}
+                className={`py-2 px-1 rounded-lg text-center transition ${
+                  mobileResearchSubTab === 'validation'
+                    ? 'bg-indigo-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                2. Validation
+              </button>
+              <button
+                onClick={() => setMobileResearchSubTab('formulas')}
+                className={`py-2 px-1 rounded-lg text-center transition ${
+                  mobileResearchSubTab === 'formulas'
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                3. Formulas
+              </button>
+            </div>
+
+            <ErrorBoundary fallbackTitle="Research Mode Module">
+              {mobileResearchSubTab === 'lab' && (
+                <ClimateIntelligenceLab activeK={activeK} />
+              )}
+
+              {mobileResearchSubTab === 'validation' && (
+                <div className="space-y-4">
+                  <MethodologyPanel />
+                  <DataQualityCard quality={dataQuality} coverage={coverage} />
+                  <ModelEvaluation
+                    evaluations={evaluations || []}
+                    optimalKData={optimalKData}
+                    featureSeparation={featureSeparation || []}
+                    stability={stability}
+                    activeK={activeK}
+                    onSelectK={onSelectK || (() => {})}
+                  />
+                  <VulnerabilityProfilesView profiles={profiles} />
+                  <ClusterRadarChart radarData={radarCentroids} profiles={profiles} activeK={activeK} />
+                  <PCAVisualizer pcaData={pcaData} umapData={umapData} activeK={activeK} />
+                  <HierarchicalComparisonView comparison={hierarchicalComparison} activeK={activeK} />
+                  {annualShifts && annualShifts.length > 0 && (
+                    <TemporalAnalysisView
+                      annualShifts={annualShifts}
+                      stations={(mapStations || OFFLINE_STATIONS).map((st: any) => ({
+                        station_id: st.station_id,
+                        name: st.name || st.station_name
+                      }))}
+                    />
+                  )}
+                  <ScientificLimitationsCard />
+                </div>
+              )}
+
+              {mobileResearchSubTab === 'formulas' && (
+                <MobileResearch />
+              )}
+            </ErrorBoundary>
           </div>
         )}
 
@@ -246,7 +358,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
             >
               ← Back to Overview
             </button>
-            <ClimateIntelligenceLab activeK={activeK} />
+            <ErrorBoundary fallbackTitle="Climate Intelligence Lab">
+              <ClimateIntelligenceLab activeK={activeK} />
+            </ErrorBoundary>
           </div>
         )}
 

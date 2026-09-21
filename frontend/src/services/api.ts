@@ -428,7 +428,8 @@ export const api = {
       const omRes = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&forecast_days=1`
       );
-      if (omRes.ok) {
+      const omCt = omRes.headers.get('content-type') || '';
+      if (omRes.ok && omCt.includes('application/json')) {
         const omData = await omRes.json();
         const times: string[] = omData.hourly?.time || [];
         const temps: number[] = omData.hourly?.temperature_2m || [];
@@ -549,7 +550,8 @@ export const api = {
       const omRes = await fetch(
         `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,surface_pressure,wind_speed_10m`
       );
-      if (omRes.ok) {
+      const omCt = omRes.headers.get('content-type') || '';
+      if (omRes.ok && omCt.includes('application/json')) {
         const live = (await omRes.json()).current || {};
         const t = Number(live.temperature_2m ?? 32.0);
         const rh = Number(live.relative_humidity_2m ?? 50.0);

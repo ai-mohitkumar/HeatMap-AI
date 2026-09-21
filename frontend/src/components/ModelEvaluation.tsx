@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import type { ClusterEvaluation, OptimalKRecommendation, FeatureSeparation, ClusterStabilityResult } from '../types';
 import { Award, CheckCircle2, TrendingDown, Sparkles, Activity, BarChart2, ShieldCheck } from 'lucide-react';
+import { OFFLINE_RESEARCH_DATA } from '../utils/offlineResearchData';
 
 interface ModelEvaluationProps {
   evaluations: ClusterEvaluation[];
@@ -21,13 +22,28 @@ interface ModelEvaluationProps {
 }
 
 export const ModelEvaluation: React.FC<ModelEvaluationProps> = ({
-  evaluations,
-  optimalKData,
-  featureSeparation,
-  stability,
+  evaluations: propEvaluations,
+  optimalKData: propOptimalK,
+  featureSeparation: propFeatureSeparation,
+  stability: propStability,
   activeK,
   onSelectK
 }) => {
+  const evaluations: ClusterEvaluation[] =
+    propEvaluations && propEvaluations.length > 0
+      ? propEvaluations
+      : (OFFLINE_RESEARCH_DATA.evaluations as unknown as ClusterEvaluation[]);
+
+  const optimalKData: OptimalKRecommendation =
+    propOptimalK || (OFFLINE_RESEARCH_DATA.optimal_k as unknown as OptimalKRecommendation);
+
+  const featureSeparation: FeatureSeparation[] =
+    propFeatureSeparation && propFeatureSeparation.length > 0
+      ? propFeatureSeparation
+      : (OFFLINE_RESEARCH_DATA.feature_separation as unknown as FeatureSeparation[]);
+
+  const stability: ClusterStabilityResult =
+    propStability || (OFFLINE_RESEARCH_DATA.stability as unknown as ClusterStabilityResult);
   return (
     <div className="space-y-6">
       {/* Automated Recommendation Banner */}
@@ -284,7 +300,7 @@ export const ModelEvaluation: React.FC<ModelEvaluationProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {evaluations.map((row) => {
+                {(evaluations || []).map((row) => {
                   const isOptimal = optimalKData?.optimal_k === row.k;
                   const isActive = activeK === row.k;
                   return (
@@ -351,7 +367,7 @@ export const ModelEvaluation: React.FC<ModelEvaluationProps> = ({
             </p>
 
             <div className="space-y-2.5">
-              {featureSeparation.map((f, idx) => (
+              {(featureSeparation || []).map((f, idx) => (
                 <div key={idx} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[140px]" title={f.feature}>

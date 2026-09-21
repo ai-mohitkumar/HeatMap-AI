@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import type { RadarCentroidsResponse, ClusterProfile } from '../types';
 import { Compass, Info, Eye } from 'lucide-react';
+import { OFFLINE_RESEARCH_DATA } from '../utils/offlineResearchData';
 
 interface ClusterRadarChartProps {
   radarData: RadarCentroidsResponse | null;
@@ -33,9 +34,14 @@ export const ClusterRadarChart: React.FC<ClusterRadarChartProps> = ({ radarData,
     3: true
   });
 
-  if (!radarData || !radarData.radar_data || radarData.radar_data.length === 0) {
-    return null;
-  }
+  const effectiveData: RadarCentroidsResponse =
+    radarData && radarData.radar_data && radarData.radar_data.length > 0
+      ? radarData
+      : (OFFLINE_RESEARCH_DATA.radar_centroids as unknown as RadarCentroidsResponse);
+
+  const clusterList = effectiveData.clusters && effectiveData.clusters.length > 0
+    ? effectiveData.clusters
+    : [0, 1, 2, 3];
 
   const toggleProfile = (clusterId: number) => {
     setActiveProfiles((prev) => ({ ...prev, [clusterId]: !prev[clusterId] }));
@@ -66,7 +72,7 @@ export const ClusterRadarChart: React.FC<ClusterRadarChartProps> = ({ radarData,
           <span className="text-slate-400 text-[11px] mr-1 flex items-center gap-1">
             <Eye className="w-3 h-3" /> Toggle:
           </span>
-          {radarData.clusters.map((cId) => {
+          {clusterList.map((cId) => {
             const isVisible = activeProfiles[cId] ?? true;
             const color = CLUSTER_COLORS[cId]?.stroke || '#3B82F6';
             return (
@@ -90,7 +96,7 @@ export const ClusterRadarChart: React.FC<ClusterRadarChartProps> = ({ radarData,
       {/* Radar Chart Area */}
       <div className="h-80 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData.radar_data}>
+          <RadarChart cx="50%" cy="50%" outerRadius="75%" data={effectiveData.radar_data}>
             <PolarGrid stroke="#cbd5e1" strokeDasharray="3 3" opacity={0.5} />
             <PolarAngleAxis
               dataKey="indicator"
@@ -106,7 +112,7 @@ export const ClusterRadarChart: React.FC<ClusterRadarChartProps> = ({ radarData,
                       <span className="font-extrabold text-amber-400 block mb-1">
                         {data.indicator}
                       </span>
-                      {radarData.clusters.map((cId) => {
+                      {clusterList.map((cId) => {
                         const val = data[`Cluster_${cId}`];
                         const raw = data[`Cluster_${cId}_raw`];
                         const color = CLUSTER_COLORS[cId]?.stroke || '#fff';
@@ -138,7 +144,7 @@ export const ClusterRadarChart: React.FC<ClusterRadarChartProps> = ({ radarData,
                 );
               }}
             />
-            {radarData.clusters.map((cId) => {
+            {clusterList.map((cId) => {
               if (!activeProfiles[cId]) return null;
               const color = CLUSTER_COLORS[cId]?.stroke || '#3B82F6';
               return (

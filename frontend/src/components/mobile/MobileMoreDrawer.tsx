@@ -45,7 +45,7 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
   ];
 
   const researchItems = [
-    { id: 'mobile_research', label: 'Research Mode (Mobile Hub)', icon: FlaskConical, color: 'text-indigo-400' },
+    { id: 'research', label: 'Research & Defense Mode', icon: FlaskConical, color: 'text-indigo-400' },
     { id: 'lab', label: 'Full Climate Intelligence Lab (RQ1–RQ6)', icon: Database, color: 'text-purple-400' },
     { id: 'insights', label: 'Model Insights & ANOVA', icon: BarChart3, color: 'text-rose-400' },
     { id: 'reports', label: 'Export Executive Report (.md)', icon: FileText, color: 'text-teal-400' },

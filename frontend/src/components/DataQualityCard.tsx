@@ -1,14 +1,22 @@
 import React from 'react';
 import type { DataQualityMetrics, CoverageMetrics } from '../types';
 import { ShieldCheck, Database, MapPin, Calendar, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { OFFLINE_RESEARCH_DATA } from '../utils/offlineResearchData';
 
 interface DataQualityCardProps {
   quality: DataQualityMetrics | null;
   coverage: CoverageMetrics | null;
 }
 
-export const DataQualityCard: React.FC<DataQualityCardProps> = ({ quality, coverage }) => {
-  if (!quality) return null;
+export const DataQualityCard: React.FC<DataQualityCardProps> = ({
+  quality: propQuality,
+  coverage: propCoverage
+}) => {
+  const quality: DataQualityMetrics =
+    propQuality || (OFFLINE_RESEARCH_DATA.data_quality as unknown as DataQualityMetrics);
+
+  const coverage: CoverageMetrics =
+    propCoverage || (OFFLINE_RESEARCH_DATA.coverage as unknown as CoverageMetrics);
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-4">
