@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { LanguageCode } from '../types';
 import { getTranslation } from '../utils/localization';
-import { initiatePhoneCall } from '../utils/phoneCall';
+import { initiatePhoneCall, initiateEmergencySms, initiateWhatsAppShare } from '../utils/phoneCall';
 import {
   AlertOctagon,
   PhoneCall,
@@ -11,7 +11,8 @@ import {
   VolumeX,
   X,
   ShieldAlert,
-  CheckCircle2
+  CheckCircle2,
+  Send
 } from 'lucide-react';
 
 interface HeatEmergencyModalProps {
@@ -35,6 +36,8 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
   heatIndexC,
   temperatureC,
   riskTier = 'Extreme (Tier 5)',
+  userLat,
+  userLon,
   lang,
   onNavigateToShelters,
   onBroadcastSafety
@@ -117,10 +120,12 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
     }
   }, [isOpen, isSirenMuted]);
 
-  const handleBroadcast = () => {
+  const handleBroadcast = (e?: React.MouseEvent) => {
     if (onBroadcastSafety) {
       onBroadcastSafety();
     }
+    const safeMsg = `HeatShield AI Safety Beacon: I am in ${locationName} (Feels-like ${heatIndexC}°C). I have reached a cooling shelter / shade and am currently safe! ❤️`;
+    initiateWhatsAppShare(safeMsg, undefined, e);
     setIsBroadcastSent(true);
     setTimeout(() => setIsBroadcastSent(false), 4000);
   };
@@ -236,11 +241,30 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
               </div>
             </button>
 
-            {/* 3. Broadcast Safety Check-in to Family */}
+            {/* 4. Instant SMS Emergency SOS Broadcast */}
+            <button
+              type="button"
+              onClick={(e) => {
+                const gpsText = userLat && userLon ? ` Lat ${userLat.toFixed(4)}, Lon ${userLon.toFixed(4)}. Pin: https://maps.google.com/?q=${userLat},${userLon}` : '';
+                const sosMsg = `CRITICAL HEAT EMERGENCY: Severe heat stroke symptoms reported in ${locationName} (Feels-like ${heatIndexC}°C).${gpsText} Immediate ambulance or rescue required!`;
+                initiateEmergencySms(sosMsg, undefined, e);
+              }}
+              className="flex items-center gap-3 p-3.5 bg-gradient-to-r from-red-950/80 to-rose-950/80 hover:from-red-900 hover:to-rose-900 border border-rose-500/50 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left cursor-pointer"
+            >
+              <div className="p-2 bg-rose-500/20 text-rose-400 rounded-xl shrink-0 group-hover:scale-110 transition">
+                <Send className="w-5 h-5" />
+              </div>
+              <div className="leading-snug">
+                <span className="block text-xs font-normal text-rose-300">1-Tap GPS Broadcast</span>
+                <span>Send Emergency SOS SMS</span>
+              </div>
+            </button>
+
+            {/* 5. Broadcast Safety Check-in to Family */}
             <button
               type="button"
               onClick={handleBroadcast}
-              className="flex items-center gap-3 p-3.5 bg-[#1E293B] hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left sm:col-span-2"
+              className="flex items-center gap-3 p-3.5 bg-[#1E293B] hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left cursor-pointer"
             >
               <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0 group-hover:scale-110 transition">
                 {isBroadcastSent ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <Heart className="w-5 h-5" />}
@@ -250,7 +274,7 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
                   {isBroadcastSent ? 'Beacon Recorded!' : 'Notify Watchlist Contacts'}
                 </span>
                 <span className={isBroadcastSent ? 'text-emerald-400' : 'text-white'}>
-                  {isBroadcastSent ? 'Safety Broadcast Sent to Family' : getTranslation(lang, 'broadcast_family', 'Broadcast "I\'m Safe" to Family')}
+                  {isBroadcastSent ? 'Safety Broadcast Sent (WhatsApp)' : getTranslation(lang, 'broadcast_family', 'Broadcast "I\'m Safe" to Family')}
                 </span>
               </div>
             </button>

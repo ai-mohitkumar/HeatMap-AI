@@ -7,7 +7,7 @@ import type {
   WelfareCheckinRecord
 } from '../types';
 import { getTranslation } from '../utils/localization';
-import { initiatePhoneCall } from '../utils/phoneCall';
+import { initiatePhoneCall, initiateEmergencySms, initiateWhatsAppShare } from '../utils/phoneCall';
 import {
   Heart,
   PlusCircle,
@@ -18,7 +18,8 @@ import {
   MapPin,
   X,
   CheckCircle2,
-  Clock
+  Clock,
+  Send
 } from 'lucide-react';
 
 interface FamilyCareViewProps {
@@ -126,11 +127,6 @@ export const FamilyCareView: React.FC<FamilyCareViewProps> = ({
 
   const handleDeleteMember = (id: string) => {
     setMembers(prev => prev.filter(m => m.id !== id));
-  };
-
-  const generateWhatsAppLink = (st: FamilyMemberStatus) => {
-    const msg = `Hi ${st.name}! HeatShield AI alert for ${st.city_name}: Current heat risk is ${st.tier} (${st.heat_risk_score}/100) with feels-like temperature around ${st.feels_like_c}°C. Please drink plenty of water and tap this link to confirm you're safe: https://heatshield.ai/safe?user=${encodeURIComponent(st.name)} ❤️`;
-    return `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
   };
 
   return (
@@ -349,15 +345,30 @@ export const FamilyCareView: React.FC<FamilyCareViewProps> = ({
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-2 border-t border-gray-800">
-                <a
-                  href={generateWhatsAppLink(st)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow"
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const msg = `Hi ${st.name}! HeatShield AI alert for ${st.city_name}: Current heat risk is ${st.tier} (${st.heat_risk_score}/100) with feels-like temperature around ${st.feels_like_c}°C. Please drink plenty of water and reply to confirm you're safe! ❤️`;
+                    initiateWhatsAppShare(msg, st.phone_number, e);
+                  }}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition shadow active:scale-95 cursor-pointer"
+                  title={`Send WhatsApp alert to ${st.name}`}
                 >
                   <Share2 className="w-3.5 h-3.5" />
                   <span>Alert via WhatsApp</span>
-                </a>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const msg = `Hi ${st.name}! HeatShield AI alert for ${st.city_name}: Heat risk is ${st.tier} (${st.feels_like_c}°C). Please stay in shade and hydrate!`;
+                    initiateEmergencySms(msg, st.phone_number, e);
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 font-bold py-2 px-2.5 rounded-xl text-xs flex items-center justify-center gap-1 transition shadow active:scale-95 cursor-pointer"
+                  title={`Send SMS advisory to ${st.name}`}
+                >
+                  <Send className="w-3.5 h-3.5 text-blue-400" />
+                  <span>SMS</span>
+                </button>
                 <button
                   type="button"
                   onClick={(e) => {

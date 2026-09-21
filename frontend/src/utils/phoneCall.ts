@@ -1,7 +1,7 @@
 /**
  * HeatShield AI — Universal Telephony & Direct Dialer Engine
- * Handles direct native phone dialing across mobile devices, PWAs, Android/iOS WebViews,
- * and desktop browsers with sanitized tel: URIs and automatic fallbacks.
+ * Handles direct native phone dialing, SMS dispatch, and WhatsApp sharing across
+ * mobile devices, PWAs (standalone app mode), Android/iOS WebViews, and desktop browsers.
  */
 
 export interface EmergencyHelplineContact {
@@ -77,24 +77,34 @@ export function cleanPhoneNumber(raw: string): string {
 }
 
 /**
- * Directly opens the mobile device's native calling/dialer app with the specified number.
- * Uses an Android-WebView-safe, cross-platform architecture:
- * 1. Cancels any default link navigation so Android WebView doesn't misinterpret "tel:112" as "http://tel:112/".
- * 2. Uses an Android Intent URL (intent://...#Intent;action=android.intent.action.DIAL) to directly fire the phone app.
- * 3. Uses a hidden 1px iframe to dispatch the tel: protocol without navigating the parent window.
- * 4. Fallback to programmatic anchor dispatch with target="_system".
+ * Check if current runtime is iOS (iPhone, iPad, iPod)
+ */
+export function isIOSDevice(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent || '') ||
+    (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1)
+  );
+}
+
+/**
+ * Directly triggers the native calling/dialer app with the specified number.
+ * 
+ * Works seamlessly in:
+ * - PWA Standalone Mode (installed on Android/iOS Home Screen)
+ * - Android Chrome, Firefox, Samsung Internet
+ * - iOS Safari & WebKit WebViews
+ * - Hybrid WebViews (TWA, Cordova, Capacitor)
+ * - Desktop browsers (hands off to system dialer or FaceTime)
  */
 export function initiatePhoneCall(
   rawPhone: string,
   event?: { stopPropagation?: () => void; preventDefault?: () => void }
 ): boolean {
   if (event) {
-    if (typeof event.preventDefault === 'function') {
-      event.preventDefault();
-    }
-    if (typeof event.stopPropagation === 'function') {
-      event.stopPropagation();
-    }
+    try {
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
+    } catch {}
   }
 
   const cleaned = cleanPhoneNumber(rawPhone);
@@ -104,71 +114,129 @@ export function initiatePhoneCall(
   }
 
   const telUri = `tel:${cleaned}`;
-  const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent || '');
 
-  // 1. Android Intent dispatch (Gold standard for Android WebViews & Chrome:
-  // Directly fires android.intent.action.DIAL so WebView never treats "tel:112" as host:port http://tel:112/)
-  if (isAndroid) {
-    try {
-      const intentUri = `intent://${cleaned}#Intent;scheme=tel;action=android.intent.action.DIAL;end`;
-      const intentAnchor = document.createElement('a');
-      intentAnchor.href = intentUri;
-      intentAnchor.target = '_system';
-      intentAnchor.style.display = 'none';
-      document.body.appendChild(intentAnchor);
-      intentAnchor.click();
-      setTimeout(() => {
-        try {
-          document.body.removeChild(intentAnchor);
-        } catch {}
-      }, 500);
-      return true;
-    } catch (intentErr) {
-      console.warn('[PhoneCall] Android intent dispatch fallback:', intentErr);
-    }
-  }
-
-  // 2. Safe Hidden Iframe dispatch (Universal for iOS Safari & Android:
-  // Setting an invisible subframe src NEVER navigates the top window and never triggers net::ERR_CLEARTEXT_NOT_PERMITTED)
   try {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.top = '-9999px';
-    iframe.style.left = '-9999px';
-    iframe.style.width = '1px';
-    iframe.style.height = '1px';
-    iframe.style.opacity = '0';
-    iframe.style.pointerEvents = 'none';
-    iframe.setAttribute('aria-hidden', 'true');
-    iframe.src = telUri;
-    document.body.appendChild(iframe);
-    setTimeout(() => {
-      try {
-        document.body.removeChild(iframe);
-      } catch {}
-    }, 1500);
+    // 1. Primary mechanism: Top-level location assignment triggers the native dialer
+    // without navigating the PWA or browser away from the application.
+    window.location.href = telUri;
     return true;
-  } catch (iframeErr) {
-    console.warn('[PhoneCall] Iframe dispatch error:', iframeErr);
+  } catch (err) {
+    console.warn('[PhoneCall] window.location.href failed, trying fallback link:', err);
   }
 
-  // 3. Fallback programmatic anchor dispatch with target="_system" / "_top"
   try {
-    const anchor = document.createElement('a');
-    anchor.href = telUri;
-    anchor.target = '_system';
-    anchor.rel = 'noopener';
-    anchor.style.display = 'none';
-    document.body.appendChild(anchor);
-    anchor.click();
+    // 2. Fallback mechanism: dynamic programmatic anchor click
+    const link = document.createElement('a');
+    link.href = telUri;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
     setTimeout(() => {
       try {
-        document.body.removeChild(anchor);
+        document.body.removeChild(link);
       } catch {}
     }, 500);
     return true;
   } catch (fallbackErr) {
-    console.error('[PhoneCall] Failed to open calling app:', fallbackErr);
+    console.error('[PhoneCall] All calling dispatch mechanisms failed:', fallbackErr);
     return false;
+  }
+}
+
+/**
+ * Dispatches an SMS message.
+ * Correctly accounts for iOS vs Android RFC format differences:
+ * - iOS Safari/PWA requires &body= or ;body=
+ * - Android & desktop browsers require ?body=
+ */
+export function initiateEmergencySms(
+  message: string,
+  recipientPhone?: string,
+  event?: { stopPropagation?: () => void; preventDefault?: () => void }
+): boolean {
+  if (event) {
+    try {
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
+    } catch {}
+  }
+
+  const cleanRecipient = recipientPhone ? cleanPhoneNumber(recipientPhone) : '';
+  const isIOS = isIOSDevice();
+  const encodedBody = encodeURIComponent(message);
+
+  // iOS syntax: sms:[number]&body=[message]
+  // Android syntax: sms:[number]?body=[message]
+  let smsUri: string;
+  if (cleanRecipient) {
+    smsUri = isIOS ? `sms:${cleanRecipient}&body=${encodedBody}` : `sms:${cleanRecipient}?body=${encodedBody}`;
+  } else {
+    smsUri = isIOS ? `sms:&body=${encodedBody}` : `sms:?body=${encodedBody}`;
+  }
+
+  try {
+    window.location.href = smsUri;
+    return true;
+  } catch (err) {
+    console.warn('[SMS] Direct window.location failed, trying anchor:', err);
+  }
+
+  try {
+    const link = document.createElement('a');
+    link.href = smsUri;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(link);
+      } catch {}
+    }, 500);
+    return true;
+  } catch (fallbackErr) {
+    console.error('[SMS] Failed to open messaging app:', fallbackErr);
+    return false;
+  }
+}
+
+/**
+ * Dispatches an emergency message via WhatsApp (native app intent or web fallback).
+ */
+export function initiateWhatsAppShare(
+  message: string,
+  recipientPhone?: string,
+  event?: { stopPropagation?: () => void; preventDefault?: () => void }
+): boolean {
+  if (event) {
+    try {
+      if (typeof event.stopPropagation === 'function') event.stopPropagation();
+    } catch {}
+  }
+
+  const cleanRecipient = recipientPhone ? cleanPhoneNumber(recipientPhone).replace(/^\+/, '') : '';
+  const encodedBody = encodeURIComponent(message);
+
+  const waUrl = cleanRecipient
+    ? `https://wa.me/${cleanRecipient}?text=${encodedBody}`
+    : `https://wa.me/?text=${encodedBody}`;
+
+  try {
+    // On mobile and PWA, setting location opens the installed WhatsApp app directly
+    const isMobile = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
+    if (isMobile) {
+      window.location.href = waUrl;
+    } else {
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
+    }
+    return true;
+  } catch (err) {
+    console.warn('[WhatsApp] Opening WhatsApp via window failed:', err);
+    try {
+      window.location.href = waUrl;
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

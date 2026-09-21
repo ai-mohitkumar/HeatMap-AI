@@ -8,10 +8,11 @@ import {
   Building2,
   CheckCircle2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MessageSquare
 } from 'lucide-react';
 import { notificationService, type NotificationPermissionStatus } from '../../utils/notificationService';
-import { initiatePhoneCall } from '../../utils/phoneCall';
+import { initiatePhoneCall, initiateEmergencySms, initiateWhatsAppShare } from '../../utils/phoneCall';
 import { api } from '../../services/api';
 import type { CoolingCenter } from '../../types';
 
@@ -80,13 +81,12 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
     setTimeout(() => setTestSuccess(null), 4000);
   };
 
-  // Pre-formatted Emergency SMS link with coordinates and Google Maps pin
-  const emergencySmsBody = encodeURIComponent(
+  // Pre-formatted Emergency SOS message with coordinates and Google Maps pin
+  const rawEmergencyMessage =
     `EMERGENCY ALERT: I am experiencing severe heat exhaustion/stroke symptoms in ${locationName}. ` +
     `Exact GPS: Lat ${currentLat.toFixed(4)}, Lon ${currentLon.toFixed(4)}. ` +
     `Location Pin: https://maps.google.com/?q=${currentLat.toFixed(5)},${currentLon.toFixed(5)} ` +
-    `Please dispatch emergency assistance immediately!`
-  );
+    `Please dispatch emergency assistance immediately!`;
 
   const emergencyHelplines = [
     {
@@ -225,23 +225,50 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
               </p>
             </div>
 
-            <div className="pt-1 flex gap-2">
-              <a
-                href={`sms:?body=${emergencySmsBody}`}
-                className="flex-1 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition active:scale-98"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Send Emergency SOS SMS</span>
-              </a>
+            <div className="pt-1 space-y-2">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => initiateEmergencySms(rawEmergencyMessage, undefined, e)}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition active:scale-98 cursor-pointer"
+                  title="Send Emergency SOS SMS with live GPS pin"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send SOS SMS</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={(e) => initiatePhoneCall('112', e)}
-                className="px-4 py-2 rounded-xl bg-white text-red-700 font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition active:scale-98"
-              >
-                <PhoneCall className="w-3.5 h-3.5 text-red-600" />
-                <span>Call 112</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={(e) => initiateWhatsAppShare(rawEmergencyMessage, undefined, e)}
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition active:scale-98 cursor-pointer"
+                  title="Share Emergency SOS via WhatsApp"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  <span>SOS via WhatsApp</span>
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={(e) => initiatePhoneCall('112', e)}
+                  className="flex-1 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-red-700 font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition active:scale-98 cursor-pointer"
+                  title="Direct 1-tap call to 112 National Helpline"
+                >
+                  <PhoneCall className="w-3.5 h-3.5 text-red-600" />
+                  <span>Call 112 Helpline</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => initiatePhoneCall('108', e)}
+                  className="flex-1 py-2.5 rounded-xl bg-red-700 hover:bg-red-600 text-white font-black text-xs shadow-lg flex items-center justify-center gap-1.5 transition active:scale-98 cursor-pointer"
+                  title="Direct 1-tap call to 108 Ambulance"
+                >
+                  <PhoneCall className="w-3.5 h-3.5 text-white" />
+                  <span>Call 108 Ambulance</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -365,14 +392,24 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
                   </ol>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={(e) => initiatePhoneCall('108', e)}
-                  className="mt-2 w-full py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95"
-                >
-                  <PhoneCall className="w-3.5 h-3.5" />
-                  <span>Call 108 Ambulance Now</span>
-                </button>
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => initiatePhoneCall('108', e)}
+                    className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>Call 108 Ambulance</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => initiatePhoneCall('112', e)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 border border-amber-500/40 transition active:scale-95 cursor-pointer shadow"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Call 112</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -410,6 +447,25 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
                     <li>Sip 500ml of cold electrolyte water, ORS, or lemon water slowly over 30 min.</li>
                     <li>If vomiting continues over 1 hour or dizziness worsens, dial 108.</li>
                   </ol>
+                </div>
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => initiatePhoneCall('108', e)}
+                    className="flex-1 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    <span>Call 108 Ambulance</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => initiatePhoneCall('104', e)}
+                    className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 border border-amber-500/40 transition active:scale-95 cursor-pointer shadow"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Call 104 Health Helpline</span>
+                  </button>
                 </div>
               </div>
             )}
