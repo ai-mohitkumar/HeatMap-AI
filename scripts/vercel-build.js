@@ -7,9 +7,7 @@ console.log('[HeatShield AI] Current working directory:', process.cwd());
 if (fs.existsSync('frontend')) {
   console.log('[HeatShield AI] Detected root context. Building frontend subproject...');
   execSync('npm --prefix frontend install && npm --prefix frontend run build', { stdio: 'inherit' });
-  if (!fs.existsSync('dist')) {
-    fs.cpSync('frontend/dist', 'dist', { recursive: true });
-  }
+  fs.cpSync('frontend/dist', 'dist', { recursive: true, force: true });
 } else {
   console.log('[HeatShield AI] Detected frontend context. Running direct build...');
   execSync('npm run build', { stdio: 'inherit' });

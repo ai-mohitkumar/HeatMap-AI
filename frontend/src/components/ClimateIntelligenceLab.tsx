@@ -48,7 +48,7 @@ export const ClimateIntelligenceLab: React.FC<ClimateIntelligenceLabProps> = ({ 
       setLoading(true);
       setError(null);
 
-      const [disc, anom, latent, markov, abl, hot] = await Promise.all([
+      const [disc, anom, latent, markov, abl, hot] = await Promise.allSettled([
         api.getClimateDiscovery(activeK),
         api.getClimateAnomalies(),
         api.getLatentRepresentations(),
@@ -57,15 +57,21 @@ export const ClimateIntelligenceLab: React.FC<ClimateIntelligenceLabProps> = ({ 
         api.getEmergingHotspots(18)
       ]);
 
-      setDiscoveryData(disc);
-      setAnomalyData(anom);
-      setLatentData(latent);
-      setMarkovData(markov);
-      setAblationData(abl);
-      setHotspotData(hot);
+      if (disc.status === 'fulfilled') setDiscoveryData(disc.value);
+      if (anom.status === 'fulfilled') setAnomalyData(anom.value);
+      if (latent.status === 'fulfilled') setLatentData(latent.value);
+      if (markov.status === 'fulfilled') setMarkovData(markov.value);
+      if (abl.status === 'fulfilled') setAblationData(abl.value);
+      if (hot.status === 'fulfilled') setHotspotData(hot.value);
+
+      // Only show error if all modules failed
+      const allFailed = [disc, anom, latent, markov, abl, hot].every((r) => r.status === 'rejected');
+      if (allFailed) {
+        setError('Unable to load climate intelligence engines. Offline cache is being initialized.');
+      }
     } catch (err: any) {
       console.error('Failed to load climate intelligence data:', err);
-      setError(err.message || 'Failed to load intelligence modules.');
+      setError(err?.message || 'Failed to load intelligence modules.');
     } finally {
       setLoading(false);
     }
