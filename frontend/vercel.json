@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/api/index.py"
+      "destination": "https://heatshield-ai-backend-jls2.onrender.com/api/$1"
     },
     {
       "source": "/(.*)",
