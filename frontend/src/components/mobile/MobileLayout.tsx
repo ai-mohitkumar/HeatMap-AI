@@ -29,6 +29,7 @@ import { HierarchicalComparisonView } from '../HierarchicalComparisonView';
 import { ScientificLimitationsCard } from '../ScientificLimitationsCard';
 import { TemporalAnalysisView } from '../TemporalAnalysisView';
 import { ErrorBoundary } from '../ErrorBoundary';
+import { BrightnessModal } from '../shared/BrightnessModal';
 
 interface MobileLayoutProps {
   locationName: string;
@@ -113,6 +114,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   const [mobileResearchSubTab, setMobileResearchSubTab] = useState<'lab' | 'validation' | 'formulas'>('lab');
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState<boolean>(false);
+  const [isBrightnessModalOpen, setIsBrightnessModalOpen] = useState<boolean>(false);
 
   const handleSelectBottomTab = (tab: MobileTab) => {
     setMobileTab(tab);
@@ -123,6 +125,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
     if (target === 'home' || target === 'map' || target === 'ai' || target === 'family' || target === 'alerts') {
       setMobileTab(target as MobileTab);
       setSecondaryRoute(null);
+    } else if (target === 'brightness') {
+      setIsBrightnessModalOpen(true);
     } else if (target === 'reports') {
       onExportReport();
     } else if (target === 'lab') {
@@ -473,6 +477,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         onNavigateTab={handleNavigateAny}
         displayMode={displayMode}
         onSetDisplayMode={onSetDisplayMode}
+        onOpenBrightness={() => setIsBrightnessModalOpen(true)}
       />
 
       {/* 5. Mobile Location Picker Modal */}
@@ -489,6 +494,12 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         }}
         onTrackMove={onTrackMove}
         isTracking={isTracking}
+      />
+
+      {/* 6. Display Brightness & Sunlight Boost Modal */}
+      <BrightnessModal
+        isOpen={isBrightnessModalOpen}
+        onClose={() => setIsBrightnessModalOpen(false)}
       />
     </div>
   );

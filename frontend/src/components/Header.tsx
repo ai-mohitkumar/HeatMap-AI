@@ -30,6 +30,8 @@ import { HeatShieldLogo } from './shared/HeatShieldLogo';
 import { notificationService } from '../utils/notificationService';
 import { getTranslation } from '../utils/localization';
 import type { LanguageCode } from '../types';
+import { BrightnessModal } from './shared/BrightnessModal';
+import { useBrightness } from '../utils/useBrightness';
 
 interface HeaderProps {
   activeK: number;
@@ -44,6 +46,7 @@ interface HeaderProps {
   onOpenAIAnalyst: () => void;
   onOpenApps?: () => void;
   onTriggerEmergencyMode?: () => void;
+  onOpenBrightness?: () => void;
   onSelectK?: (k: number) => void;
   onSelectYear: (year: number | null) => void;
   onExportReport?: () => void;
@@ -65,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAIAnalyst,
   onOpenApps,
   onTriggerEmergencyMode,
+  onOpenBrightness,
   onSelectYear,
   searchQuery = '',
   onSearchChange,
@@ -76,12 +80,20 @@ export const Header: React.FC<HeaderProps> = ({
   const [internalQuery, setInternalQuery] = React.useState(searchQuery);
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
   const [notifStatus, setNotifStatus] = React.useState(notificationService.getPermission());
+  const [isBrightnessModalOpen, setIsBrightnessModalOpen] = React.useState(false);
+  const { isOutdoorBoost } = useBrightness();
 
   const handleToggleNotifications = async () => {
     if (notifStatus === 'granted') {
       notificationService.triggerTestNotification(
         '🔔 HeatShield AI Alert Active',
-        'You will receive instant alerts when heat index in your location reaches high danger levels (Tier 3+).'
+        'Real-time biometeorological monitoring is functioning normally. You will receive instant warnings during extreme heat surges.'
+      );
+    } else if (notifStatus === 'denied') {
+      notificationService.dispatchInAppAlert(
+        '⚠️ Browser Notifications Blocked',
+        'Push notifications are disabled in your browser settings. In-app emergency alerts will remain active on your screen.',
+        'warning'
       );
     } else {
       const result = await notificationService.requestPermission();
@@ -563,13 +575,33 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Theme / Sun Toggle */}
+          {/* Display Brightness & Outdoor Sunlight Boost Toggle */}
           <button
-            title="Theme mode"
-            aria-label="Toggle theme mode"
-            className="p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition"
+            onClick={() => {
+              if (onOpenBrightness) {
+                onOpenBrightness();
+              } else {
+                setIsBrightnessModalOpen(true);
+              }
+            }}
+            title={
+              isOutdoorBoost
+                ? 'Outdoor Sunlight Glare Boost Active (Click to adjust)'
+                : 'Display Brightness & Sun Glare Calibration'
+            }
+            aria-label="Display brightness and sunlight boost"
+            className={`p-1.5 rounded-xl border transition flex items-center gap-1.5 ${
+              isOutdoorBoost
+                ? 'bg-amber-500/25 text-amber-300 border-amber-400 shadow-md shadow-amber-950/40 hover:bg-amber-500/35 ring-1 ring-amber-400/40'
+                : 'text-slate-400 hover:text-amber-400 hover:bg-slate-800/80 border-slate-800'
+            }`}
           >
-            <Sun className="w-4 h-4" />
+            <Sun className={`w-4 h-4 ${isOutdoorBoost ? 'text-amber-400 animate-[spin_16s_linear_infinite]' : ''}`} />
+            {isOutdoorBoost && (
+              <span className="hidden xl:inline text-[10px] font-extrabold text-amber-300 uppercase tracking-wider">
+                Boost
+              </span>
+            )}
           </button>
 
           {/* iOS & Android Suite Quick Button */}
@@ -594,6 +626,12 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
       </div>
+
+      {/* Brightness & Glare Boost Modal */}
+      <BrightnessModal
+        isOpen={isBrightnessModalOpen}
+        onClose={() => setIsBrightnessModalOpen(false)}
+      />
     </header>
   );
 };

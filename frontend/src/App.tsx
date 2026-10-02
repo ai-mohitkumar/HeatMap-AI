@@ -25,6 +25,10 @@ import { evaluateLocationHeat } from './utils/indiaGeoStore';
 import { acquireBestLocation } from './utils/geolocationService';
 import { notificationService } from './utils/notificationService';
 import { useResponsiveMode } from './hooks/useResponsiveMode';
+import { ToastBanner } from './components/shared/ToastBanner';
+import { ExportReportModal, type ExportFormat } from './components/shared/ExportReportModal';
+import { BrightnessModal } from './components/shared/BrightnessModal';
+import { useBrightness } from './utils/useBrightness';
 import { MobileLayout } from './components/mobile/MobileLayout';
 import type { StationInfluenceItem } from './components/mobile/MobileIDWCard';
 import { Header } from './components/Header';
@@ -147,6 +151,10 @@ export function App() {
 
   // Automated Heat Emergency Modal State (Tier 4 / Tier 5 trigger or manual SOS)
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState<boolean>(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
+  const [isBrightnessModalOpen, setIsBrightnessModalOpen] = useState<boolean>(false);
+  useBrightness();
+
   const handleTriggerEmergency = () => {
     setIsEmergencyModalOpen(true);
   };
@@ -178,7 +186,7 @@ export function App() {
     } else if (tab === 'insights') {
       setAppMode('dashboard');
     } else if (tab === 'reports') {
-      handleExportReport();
+      setAppMode('dashboard');
     } else {
       setAppMode('safety');
     }
@@ -317,18 +325,40 @@ export function App() {
     }
   };
 
-  const handleExportReport = async () => {
-    try {
+  const handleOpenExportModal = () => {
+    setIsExportModalOpen(true);
+  };
+
+  const handleConfirmExport = async (format: ExportFormat) => {
+    if (format === 'md' || format === 'bundle') {
       const mdText = await api.getMarkdownReport();
       const blob = new Blob([mdText], { type: 'text/markdown' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `HeatShield_AI_Executive_Report_K${activeK}.md`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (err: any) {
-      alert(`Export failed: ${err.message}`);
+    }
+
+    if (format === 'csv' || format === 'bundle') {
+      const csvContent =
+        "Station_ID,Name,Latitude,Longitude,Temp_C,Heat_Index_C,Humidity_Pct,Risk_Tier\n" +
+        OFFLINE_STATIONS.map(
+          (s) =>
+            `${s.station_id},"${s.station_name}",${s.latitude},${s.longitude},${s.temperature_c},${s.heat_index_c},${s.relative_humidity_pct},${s.vulnerability_tier}`
+        ).join("\n");
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "HeatShield_46_Synoptic_Stations.csv";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     }
   };
 
@@ -475,50 +505,64 @@ export function App() {
   // 1. Mobile-First Citizen App Layout (< 768px or forced mobile mode)
   if (isMobile) {
     return (
-      <MobileLayout
-        locationName={locationName}
-        tempC={tempC}
-        feelsLikeC={feelsLikeC}
-        humidityPct={humidity}
-        windKmh={windKmh}
-        riskLevel={riskLevel}
-        currentLat={currentLat}
-        currentLon={currentLon}
-        accuracyM={gpsAccuracy}
-        contributingStations={contributingStations}
-        selectedStationId={selectedSafetyStationId}
-        activeK={activeK}
-        activeYear={activeYear}
-        profiles={profiles}
-        mapStations={mapStations}
-        aiInsights={aiInsights}
-        customLocation={customLocation}
-        onSelectStation={(stId) => {
-          setSelectedSafetyStationId(stId);
-          setCustomLocation(null);
-        }}
-        onSelectLocation={(loc) => {
-          setCustomLocation(loc);
-        }}
-        onTrackMove={handleTrackMove}
-        isTracking={isTrackingGps}
-        gpsStatusMessage={gpsStatusMessage}
-        onExportReport={handleExportReport}
-        displayMode={displayMode}
-        onSetDisplayMode={setDisplayMode}
-        dataQuality={dataQuality}
-        coverage={coverage}
-        evaluations={evaluations}
-        optimalKData={optimalKData}
-        featureSeparation={featureSeparation}
-        stability={stability}
-        radarCentroids={radarCentroids}
-        pcaData={pcaData}
-        umapData={umapData}
-        hierarchicalComparison={hierarchicalComparison}
-        annualShifts={annualShifts}
-        onSelectK={handleSelectK}
-      />
+      <>
+        <MobileLayout
+          locationName={locationName}
+          tempC={tempC}
+          feelsLikeC={feelsLikeC}
+          humidityPct={humidity}
+          windKmh={windKmh}
+          riskLevel={riskLevel}
+          currentLat={currentLat}
+          currentLon={currentLon}
+          accuracyM={gpsAccuracy}
+          contributingStations={contributingStations}
+          selectedStationId={selectedSafetyStationId}
+          activeK={activeK}
+          activeYear={activeYear}
+          profiles={profiles}
+          mapStations={mapStations}
+          aiInsights={aiInsights}
+          customLocation={customLocation}
+          onSelectStation={(stId) => {
+            setSelectedSafetyStationId(stId);
+            setCustomLocation(null);
+          }}
+          onSelectLocation={(loc) => {
+            setCustomLocation(loc);
+          }}
+          onTrackMove={handleTrackMove}
+          isTracking={isTrackingGps}
+          gpsStatusMessage={gpsStatusMessage}
+          onExportReport={handleOpenExportModal}
+          displayMode={displayMode}
+          onSetDisplayMode={setDisplayMode}
+          dataQuality={dataQuality}
+          coverage={coverage}
+          evaluations={evaluations}
+          optimalKData={optimalKData}
+          featureSeparation={featureSeparation}
+          stability={stability}
+          radarCentroids={radarCentroids}
+          pcaData={pcaData}
+          umapData={umapData}
+          hierarchicalComparison={hierarchicalComparison}
+          annualShifts={annualShifts}
+          onSelectK={handleSelectK}
+        />
+        <ToastBanner />
+        <ExportReportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          onConfirmExport={handleConfirmExport}
+          activeK={activeK}
+          activeLocation={locationName}
+        />
+        <BrightnessModal
+          isOpen={isBrightnessModalOpen}
+          onClose={() => setIsBrightnessModalOpen(false)}
+        />
+      </>
     );
   }
 
@@ -554,10 +598,10 @@ export function App() {
           }
         }}
         onOpenAIAnalyst={() => setIsAnalystOpen(true)}
-
+        onOpenBrightness={() => setIsBrightnessModalOpen(true)}
         onSelectK={handleSelectK}
         onSelectYear={handleSelectYear}
-        onExportReport={handleExportReport}
+        onExportReport={handleOpenExportModal}
         onSelectStation={(stationId) => {
           setSelectedSafetyStationId(stationId);
           setCustomLocation(null);
@@ -775,24 +819,13 @@ export function App() {
                 </p>
                 <div className="flex flex-wrap gap-3 mt-4">
                   <button
-                    onClick={handleExportReport}
+                    onClick={handleOpenExportModal}
                     className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white text-xs font-bold rounded-xl shadow transition flex items-center gap-2"
                   >
                     <span>Download Executive Report (Markdown)</span>
                   </button>
                   <button
-                    onClick={() => {
-                      const csvContent = "data:text/csv;charset=utf-8," + 
-                        "Station_ID,Name,Latitude,Longitude,Temp_C,Heat_Index_C,Humidity_Pct,Risk_Tier\n" +
-                        OFFLINE_STATIONS.map(s => `${s.station_id},"${s.station_name}",${s.latitude},${s.longitude},${s.temperature_c},${s.heat_index_c},${s.relative_humidity_pct},${s.vulnerability_tier}`).join("\n");
-                      const encodedUri = encodeURI(csvContent);
-                      const link = document.createElement("a");
-                      link.setAttribute("href", encodedUri);
-                      link.setAttribute("download", "HeatShield_46_Synoptic_Stations.csv");
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }}
+                    onClick={handleOpenExportModal}
                     className="px-4 py-2 bg-[#131E3A] hover:bg-slate-800 text-slate-200 border border-slate-700 text-xs font-semibold rounded-xl transition flex items-center gap-2"
                   >
                     <span>Export 46 Stations (CSV)</span>
@@ -1025,7 +1058,7 @@ export function App() {
               {activeTab === 'map' && <PriorityMap stations={mapStations} activeK={activeK} />}
               {activeTab === 'profiles' && <VulnerabilityProfilesView profiles={profiles} />}
               {activeTab === 'insights' && (
-                <AIInsightsView insights={aiInsights} onExportReport={handleExportReport} />
+                <AIInsightsView insights={aiInsights} onExportReport={handleOpenExportModal} />
               )}
               {activeTab === 'data' && <StationTable data={previewData} />}
 
@@ -1063,6 +1096,24 @@ export function App() {
           setSidebarTab('family');
           setAppMode('safety');
         }}
+      />
+
+      {/* Real-Time Toast Notification Banner */}
+      <ToastBanner />
+
+      {/* Confirmation Export Modal */}
+      <ExportReportModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirmExport={handleConfirmExport}
+        activeK={activeK}
+        activeLocation={locationName}
+      />
+
+      {/* Display Brightness & Sunlight Boost Modal */}
+      <BrightnessModal
+        isOpen={isBrightnessModalOpen}
+        onClose={() => setIsBrightnessModalOpen(false)}
       />
 
       {/* Footer */}

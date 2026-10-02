@@ -13,7 +13,8 @@ import {
   Smartphone,
   Monitor,
   ChevronRight,
-  Info
+  Info,
+  Sun
 } from 'lucide-react';
 import { HeatShieldLogo } from '../shared/HeatShieldLogo';
 import type { DisplayMode } from '../../hooks/useResponsiveMode';
@@ -24,6 +25,7 @@ interface MobileMoreDrawerProps {
   onNavigateTab: (tab: string) => void;
   displayMode: DisplayMode;
   onSetDisplayMode: (mode: DisplayMode) => void;
+  onOpenBrightness?: () => void;
 }
 
 export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
@@ -31,7 +33,8 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
   onClose,
   onNavigateTab,
   displayMode,
-  onSetDisplayMode
+  onSetDisplayMode,
+  onOpenBrightness
 }) => {
   if (!isOpen) return null;
 
@@ -40,6 +43,7 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
     { id: 'plan', label: 'Plan & Daily Routine', icon: Calendar, color: 'text-blue-400' },
     { id: 'worker', label: 'Worker Safety Mode', icon: HardHat, color: 'text-yellow-400' },
     { id: 'sos', label: 'Cooling Shelters & SOS', icon: Snowflake, color: 'text-cyan-400' },
+    { id: 'brightness', label: 'Outdoor Sunlight Boost & Glare', icon: Sun, color: 'text-amber-400' },
     { id: 'villages', label: 'All Villages & Districts (787)', icon: Building2, color: 'text-emerald-400' },
     { id: 'apps', label: 'Download Suite (APK / iOS)', icon: Smartphone, color: 'text-purple-400' },
   ];
@@ -48,10 +52,19 @@ export const MobileMoreDrawer: React.FC<MobileMoreDrawerProps> = ({
     { id: 'research', label: 'Research & Defense Mode', icon: FlaskConical, color: 'text-indigo-400' },
     { id: 'lab', label: 'Full Climate Intelligence Lab (RQ1–RQ6)', icon: Database, color: 'text-purple-400' },
     { id: 'insights', label: 'Model Insights & ANOVA', icon: BarChart3, color: 'text-rose-400' },
-    { id: 'reports', label: 'Export Executive Report (.md)', icon: FileText, color: 'text-teal-400' },
+    { id: 'reports', label: 'Export Research & Data Report', icon: FileText, color: 'text-teal-400' },
   ];
 
   const handleItemClick = (id: string) => {
+    if (id === 'brightness') {
+      if (onOpenBrightness) {
+        onOpenBrightness();
+      } else {
+        onNavigateTab('brightness');
+      }
+      onClose();
+      return;
+    }
     onNavigateTab(id);
     onClose();
   };

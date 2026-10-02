@@ -64,20 +64,20 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
     setPermission(res);
     if (res === 'granted') {
       setTestSuccess('System notifications enabled successfully! Sent test alert.');
-      setTimeout(() => setTestSuccess(null), 4000);
+    } else if (res === 'denied') {
+      setTestSuccess('Notifications are blocked by browser settings. In-app alerts remain active on screen.');
+    } else {
+      setTestSuccess('In-app alerts are active.');
     }
+    setTimeout(() => setTestSuccess(null), 4000);
   };
 
   const handleTestNotification = () => {
-    const ok = notificationService.triggerTestNotification(
+    notificationService.triggerTestNotification(
       `☀️ HeatShield AI Test Alert: ${locationName}`,
       `Current heat index is ${feelsLikeC.toFixed(1)}°C (${riskLevel} Risk). Hydration status: 250ml every 20m recommended.`
     );
-    if (ok) {
-      setTestSuccess('Test notification sent to your device!');
-    } else {
-      setTestSuccess('Please allow browser notification permissions first.');
-    }
+    setTestSuccess('Test alert dispatched! Check your notifications and screen banner.');
     setTimeout(() => setTestSuccess(null), 4000);
   };
 
