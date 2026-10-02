@@ -3,7 +3,8 @@
  * Enables 100% offline operation, PWA installation, and zero-network resilience.
  */
 
-const CACHE_NAME = 'heatshield-v3';
+const CACHE_NAME = 'heatshield-v4';
+
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
