@@ -81,15 +81,15 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'Google Pixel, Samsung Galaxy, OnePlus, Xiaomi',
     file: 'HeatShield-AI-v2.0-universal.apk',
     url: '/downloads/HeatShield-AI-v2.0-universal.apk',
-    size: '453 KB',
+    size: '585 KB',
     version: 'v2.0.4',
     format: 'APK (Native Signed Package)',
     compatibility: 'Android 7.0 to 15 (ARM64, ARMv7, x86_64)',
-    sha256: '7c06228151b86fcd25f89ebad30c5f444f9121458c2fb4a6d19ecfdbd166a4fc',
+    sha256: '5d38212c5eb50cb4a218d338d04d675a315cd9bfdf707db83098e7cb3678572a',
     badge: 'Native Signed APK',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     instructions: [
-      'Tap "Download APK" to save HeatShield-AI-v2.0-universal.apk (453 KB) directly to your device.',
+      'Tap "Download APK" to save HeatShield-AI-v2.0-universal.apk (585 KB) directly to your device.',
       'Open Downloads or tap the download completion notification.',
       'If prompted with "Install unknown apps", tap Settings and enable "Allow from this source".',
       'Tap "Install" — HeatShield AI installs cleanly and opens with full offline heat safety intelligence!'
@@ -105,7 +105,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     version: 'v2.0.4',
     format: 'Apple Configuration Profile (.mobileconfig)',
     compatibility: 'iOS 15.0+, iPadOS 15.0+, macOS Monterey+',
-    sha256: 'e8aabc24ce11a1a51a338596f275fbde567e8a06e11e2b1f1542966f517bf182',
+    sha256: '101b17cf869b870ba217e9f98297b10dec3b0d82ad2375f3a150c77dc767eeda',
     badge: 'Native WebClip Profile',
     badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
     instructions: [
@@ -142,11 +142,11 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'Windows 10/11, macOS, Linux',
     file: 'HeatShield-AI-Desktop-Windows.zip',
     url: '/downloads/HeatShield-AI-Desktop-Windows.zip',
-    size: '453 KB',
+    size: '0.6 MB',
     version: 'v2.0.4',
     format: 'Windows & macOS Standalone (.zip)',
     compatibility: 'Windows 10/11 (64-bit), macOS 12+, Linux x86_64',
-    sha256: '9cafc4d09bd40cf2d1a6fd089b7e69080c622ad520f33cc769303bd9d901a5e3',
+    sha256: '382339bdf8e75caf1badef6bbebd23cdf18ca85ad2c14a92012fe671c9df0b3d',
     badge: '1-Click Portable',
     badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
     instructions: [
@@ -166,7 +166,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     version: 'v2.0.4',
     format: 'Full ML, GIS & Research Bundle (.zip)',
     compatibility: 'Universal (Python 3.10+, Jupyter, Node.js)',
-    sha256: '7ee44b9d7d65c39b4446a9f421929331c67b7004b0ea937b8d0de5cc0ecd283f',
+    sha256: '9ab27dc86551bc4d61fbfc234596892a1af146eb55be7585b0fc4a37f8e93912',
     badge: 'Complete Academic Suite',
     badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
     instructions: [
@@ -296,9 +296,11 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
   const handleTriggerDownload = (pkg: DownloadPackageInfo) => {
     setDownloadSuccessNotice(`Downloading ${pkg.file}...`);
     setTimeout(() => setDownloadSuccessNotice(null), 3500);
-    // Create link and trigger physical download
+    // Create link and trigger physical download with robust base resolution
     const link = document.createElement('a');
-    link.href = pkg.url;
+    const base = import.meta.env.BASE_URL || './';
+    const cleanUrl = pkg.url.startsWith('/') ? pkg.url.slice(1) : pkg.url;
+    link.href = `${base}${cleanUrl}`;
     link.download = pkg.file;
     document.body.appendChild(link);
     link.click();

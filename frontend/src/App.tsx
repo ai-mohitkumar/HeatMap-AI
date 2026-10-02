@@ -549,6 +549,8 @@ export function App() {
           hierarchicalComparison={hierarchicalComparison}
           annualShifts={annualShifts}
           onSelectK={handleSelectK}
+          hasPwaPrompt={Boolean(deferredPrompt)}
+          onTriggerPwaInstall={handleTriggerPwaInstall}
         />
         <ToastBanner />
         <ExportReportModal

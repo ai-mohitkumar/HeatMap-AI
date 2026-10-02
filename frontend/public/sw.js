@@ -3,7 +3,7 @@
  * Enables 100% offline operation, PWA installation, and zero-network resilience.
  */
 
-const CACHE_NAME = 'heatshield-v4';
+const CACHE_NAME = 'heatshield-v5';
 
 const PRECACHE_ASSETS = [
   '/',
@@ -11,7 +11,9 @@ const PRECACHE_ASSETS = [
   '/manifest.json',
   '/favicon.svg',
   '/icons.svg',
-  '/leaflet.css'
+  '/leaflet.css',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 self.addEventListener('install', (event) => {

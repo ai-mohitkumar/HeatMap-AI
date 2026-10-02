@@ -69,6 +69,8 @@ interface MobileLayoutProps {
   hierarchicalComparison?: any;
   annualShifts?: any[];
   onSelectK?: (k: number) => void;
+  hasPwaPrompt?: boolean;
+  onTriggerPwaInstall?: () => void;
 }
 
 export const MobileLayout: React.FC<MobileLayoutProps> = ({
@@ -107,7 +109,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   umapData,
   hierarchicalComparison,
   annualShifts,
-  onSelectK
+  onSelectK,
+  hasPwaPrompt,
+  onTriggerPwaInstall
 }) => {
   const [mobileTab, setMobileTab] = useState<MobileTab>('home');
   const [secondaryRoute, setSecondaryRoute] = useState<string | null>(null);
@@ -261,13 +265,31 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
           <div className="p-3.5 space-y-3 pb-24">
             <button
               onClick={() => setSecondaryRoute(null)}
-              className="text-xs text-blue-400 font-bold mb-2 flex items-center gap-1"
+              className="text-xs text-blue-400 font-bold mb-2 flex items-center gap-1 hover:text-blue-300 transition"
             >
               ← Back to Overview
             </button>
             <DeviceShowcaseView
               customLocation={customLocation}
               onSelectLocation={onSelectLocation}
+              hasPwaPrompt={hasPwaPrompt}
+              onTriggerPwaInstall={onTriggerPwaInstall}
+              onNavigateTab={(tab) => {
+                if (tab === 'home') {
+                  setSecondaryRoute(null);
+                  setMobileTab('home');
+                } else if (tab === 'villages') {
+                  setSecondaryRoute('villages');
+                } else if (tab === 'map') {
+                  setSecondaryRoute(null);
+                  setMobileTab('map');
+                } else if (tab === 'ai') {
+                  setSecondaryRoute(null);
+                  setMobileTab('ai');
+                } else if (tab === 'research') {
+                  setSecondaryRoute('research');
+                }
+              }}
             />
           </div>
         )}
@@ -281,9 +303,17 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               >
                 ← Back to Overview
               </button>
-              <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-[10px] font-extrabold uppercase border border-indigo-500/30">
-                Research &amp; Viva Defense Hub
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={onExportReport}
+                  className="px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-[10px] font-bold border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer"
+                >
+                  📥 Export Report
+                </button>
+                <span className="px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-[10px] font-extrabold uppercase border border-indigo-500/30">
+                  Research &amp; Viva
+                </span>
+              </div>
             </div>
 
             {/* Mobile Research Subtab Switcher */}

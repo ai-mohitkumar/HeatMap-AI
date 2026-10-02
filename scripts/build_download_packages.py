@@ -423,7 +423,7 @@ def build_ios_mobileconfig():
             <key>Label</key>
             <string>HeatShield</string>
             <key>URL</key>
-            <string>http://127.0.0.1:5173/</string>
+            <string>https://heat-map-ai.vercel.app/</string>
             <key>IsRemovable</key>
             <true/>
             <key>FullScreen</key>
