@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+html, body {
+  background-color: #090F1F !important;
+  color: #f8fafc;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  background-color: #090F1F !important;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 /* Leaflet Container baseline styling */
 .leaflet-container {
   width: 100%;

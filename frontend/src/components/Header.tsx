@@ -198,8 +198,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   const hasAnyResults = matchingStations.length > 0 || matchingGeoLocations.length > 0;
   return (
-    <header className="bg-[#0B132B] text-white border-b border-slate-800/80 sticky top-0 z-50 shadow-md">
-      <div className="w-full px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
+    <header className="bg-[#0B132B] text-white border-b border-slate-800/80 sticky top-0 z-50 shadow-md w-full max-w-full overflow-x-hidden">
+      <div className="w-full max-w-full px-3 sm:px-4 lg:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4 overflow-x-hidden">
         
         {/* Left: Brand Emblem & Logo with Mobile Hamburger Button */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -217,7 +217,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Center-Left: Search Bar with Autocomplete Dropdown */}
-        <div ref={searchContainerRef} className="relative hidden md:flex items-center w-72 lg:w-80">
+        <div ref={searchContainerRef} className="relative hidden md:flex items-center w-48 lg:w-60 xl:w-72 shrink min-w-0">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
           <input
             ref={searchInputRef}
@@ -449,7 +449,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Center: Top Mode Navigation Pills */}
-        <div className="hidden lg:flex items-center p-1 bg-[#131E3A] rounded-xl border border-slate-800 text-xs font-medium space-x-1">
+        <div className="hidden xl:flex items-center p-1 bg-[#131E3A] rounded-xl border border-slate-800 text-xs font-medium space-x-1 shrink-0">
           <button
             onClick={() => onToggleMode('safety')}
             className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition font-semibold ${
@@ -508,10 +508,10 @@ export const Header: React.FC<HeaderProps> = ({
 
         </div>
 
-        {/* Right: Year Filter, Theme Toggle, User Avatar */}
-        <div className="flex items-center gap-2.5 shrink-0">
-          {/* Year Filter Dropdown (hidden on small mobile screens) */}
-          <div className="hidden sm:flex items-center gap-1.5 bg-[#131E3A] border border-slate-700/70 rounded-xl px-2.5 py-1 text-xs text-slate-300">
+        {/* Right: Year Filter, Theme Toggle, Language, Emergency */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Year Filter Dropdown (visible on wide screens) */}
+          <div className="hidden 2xl:flex items-center gap-1.5 bg-[#131E3A] border border-slate-700/70 rounded-xl px-2.5 py-1 text-xs text-slate-300">
             <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <select
               aria-label="Filter observations by year"
@@ -529,7 +529,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Global Language Selector */}
-          <div className="flex items-center gap-1.5 bg-[#131E3A] border border-slate-700/70 rounded-xl px-2.5 py-1 text-xs text-slate-300 shadow-sm">
+          <div className="flex items-center gap-1.5 bg-[#131E3A] border border-slate-700/70 rounded-xl px-2 sm:px-2.5 py-1 text-xs text-slate-300 shadow-sm">
             <Globe className="w-3.5 h-3.5 text-blue-400 shrink-0" />
             <select
               aria-label="Select language"
@@ -537,9 +537,9 @@ export const Header: React.FC<HeaderProps> = ({
               onChange={(e) => onSelectLang(e.target.value as LanguageCode)}
               className="bg-transparent border-none text-xs text-slate-200 font-semibold focus:outline-none cursor-pointer pr-1"
             >
-              <option value="en" className="bg-[#131E3A] text-slate-200">EN (English)</option>
-              <option value="hi" className="bg-[#131E3A] text-slate-200">हिन्दी (Hindi)</option>
-              <option value="pa" className="bg-[#131E3A] text-slate-200">ਪੰਜਾਬੀ (Punjabi)</option>
+              <option value="en" className="bg-[#131E3A] text-slate-200">EN</option>
+              <option value="hi" className="bg-[#131E3A] text-slate-200">हिन्दी</option>
+              <option value="pa" className="bg-[#131E3A] text-slate-200">ਪੰਜਾਬੀ</option>
             </select>
           </div>
 
@@ -548,14 +548,14 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={handleToggleNotifications}
             title={notifStatus === 'granted' ? getTranslation(lang, 'alerts_on', 'Alerts Active (Click to test)') : getTranslation(lang, 'alerts_off', 'Enable Alerts')}
             aria-label="Toggle notifications"
-            className={`px-2.5 py-1.5 rounded-xl border transition flex items-center gap-1.5 text-xs font-semibold ${
+            className={`px-2 sm:px-2.5 py-1.5 rounded-xl border transition flex items-center gap-1.5 text-xs font-semibold ${
               notifStatus === 'granted'
                 ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
                 : 'bg-slate-800/80 text-slate-400 hover:text-amber-300 border-slate-700/70'
             }`}
           >
             <Bell className={`w-3.5 h-3.5 ${notifStatus === 'granted' ? 'text-emerald-400' : ''}`} />
-            <span className="hidden lg:inline">
+            <span className="hidden 2xl:inline">
               {notifStatus === 'granted' ? getTranslation(lang, 'alerts_on', 'Alerts On') : getTranslation(lang, 'alerts_off', 'Alerts')}
             </span>
           </button>
@@ -566,10 +566,10 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={onTriggerEmergencyMode}
               title="Open Heat Emergency Mode"
               aria-label="Open emergency mode"
-              className="px-2.5 py-1.5 bg-rose-600/25 hover:bg-rose-600/40 border border-rose-500/40 text-rose-300 hover:text-white rounded-xl transition flex items-center gap-1.5 text-xs font-black shadow-sm group"
+              className="px-2 sm:px-2.5 py-1.5 bg-rose-600/25 hover:bg-rose-600/40 border border-rose-500/40 text-rose-300 hover:text-white rounded-xl transition flex items-center gap-1.5 text-xs font-black shadow-sm group"
             >
               <AlertOctagon className="w-3.5 h-3.5 text-rose-400 animate-pulse group-hover:rotate-12 transition" />
-              <span className="hidden sm:inline tracking-wider">
+              <span className="hidden lg:inline tracking-wider">
                 {getTranslation(lang, 'emergency_badge', 'EMERGENCY')}
               </span>
             </button>
@@ -604,25 +604,17 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* iOS & Android Suite Quick Button */}
+          {/* iOS & Android Suite Quick Button (visible on wide screens) */}
           {onOpenApps && (
             <button
               onClick={onOpenApps}
               title="iOS, Android & Smartwatch Suite"
-              className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 hover:text-white rounded-xl transition flex items-center gap-1.5 text-xs font-bold shadow-sm"
+              className="hidden 2xl:flex px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 hover:text-white rounded-xl transition items-center gap-1.5 text-xs font-bold shadow-sm"
             >
               <Smartphone className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden sm:inline">iOS / Android</span>
+              <span>iOS / Android</span>
             </button>
           )}
-
-          {/* User Profile Avatar "MK" */}
-          <div
-            title="Mohit Kumar"
-            className="w-8 h-8 rounded-full bg-[#1D2D50] border border-blue-400/30 text-blue-300 font-semibold text-xs flex items-center justify-center shadow"
-          >
-            MK
-          </div>
         </div>
 
       </div>

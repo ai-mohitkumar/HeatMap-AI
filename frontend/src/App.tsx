@@ -568,7 +568,7 @@ export function App() {
 
   // 2. High-Density Analytical Desktop Dashboard & Research Lab (>= 768px)
   return (
-    <div className="min-h-screen bg-[#090F1F] text-slate-100 flex flex-col font-sans transition-colors">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-[#090F1F] text-slate-100 flex flex-col font-sans transition-colors">
       {/* Top Header */}
       <Header
         activeK={activeK}
@@ -626,7 +626,7 @@ export function App() {
       />
 
       {/* Body with Left Sidebar Rail and Main Workspace */}
-      <div className="flex flex-1 min-h-[calc(100vh-62px)]">
+      <div className="flex flex-1 min-h-[calc(100vh-62px)] w-full max-w-full overflow-x-hidden">
         {/* Left Navigation Sidebar (Desktop Sidebar + Mobile Bottom Nav & Drawer) */}
         <Sidebar
           activeTab={sidebarTab}
