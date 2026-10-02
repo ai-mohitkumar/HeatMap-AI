@@ -125,10 +125,17 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
       setSecondaryRoute(null);
     } else if (target === 'reports') {
       onExportReport();
+    } else if (target === 'lab') {
+      setSecondaryRoute('research');
+      setMobileResearchSubTab('lab');
+    } else if (target === 'insights') {
+      setSecondaryRoute('research');
+      setMobileResearchSubTab('validation');
     } else {
       setSecondaryRoute(target);
     }
   };
+
 
   return (
     <div className="min-h-screen bg-[#090F1F] text-slate-100 flex flex-col font-sans select-none">

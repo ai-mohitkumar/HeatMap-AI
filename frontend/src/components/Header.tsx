@@ -4,8 +4,8 @@ import {
   Shield,
   LayoutDashboard,
   FlaskConical,
-  Database,
   Calendar,
+
   Sun,
   BrainCircuit,
   X,
@@ -15,8 +15,10 @@ import {
   Menu,
   Globe,
   Bell,
-  AlertOctagon
+  AlertOctagon,
+  Sparkles
 } from 'lucide-react';
+
 import { OFFLINE_STATIONS } from '../utils/offlineEngine';
 import {
   searchVillagesAndDistricts,
@@ -464,7 +466,7 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => onToggleMode('research')}
             className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
               appMode === 'research'
-                ? 'bg-indigo-600 text-white shadow'
+                ? 'bg-indigo-600 text-white shadow font-semibold'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
@@ -476,21 +478,22 @@ export const Header: React.FC<HeaderProps> = ({
             onClick={() => onToggleMode('lab')}
             className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
               appMode === 'lab'
-                ? 'bg-purple-600 text-white shadow'
+                ? 'bg-purple-600 text-white shadow font-semibold'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
             }`}
           >
-            <BrainCircuit className="w-3.5 h-3.5" />
-            <span>AI Analyst</span>
+            <BrainCircuit className="w-3.5 h-3.5 text-purple-300" />
+            <span>Climate Lab (RQ1–6)</span>
           </button>
 
           <button
             onClick={onOpenAIAnalyst}
             className="px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60 transition"
           >
-            <Database className="w-3.5 h-3.5" />
-            <span>Data Explorer</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>AI Analyst</span>
           </button>
+
         </div>
 
         {/* Right: Year Filter, Theme Toggle, User Avatar */}

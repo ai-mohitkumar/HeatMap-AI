@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Settings, MapPin, ChevronDown } from 'lucide-react';
+import { Bell, Menu, MapPin, ChevronDown } from 'lucide-react';
 import { HeatShieldLogo } from '../shared/HeatShieldLogo';
 
 interface MobileHeaderProps {
@@ -36,8 +36,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
       </button>
 
-      {/* Right: Notification Bell & Settings / Drawer */}
-      <div className="flex items-center gap-1">
+      {/* Right: Notification Bell & Menu Drawer */}
+      <div className="flex items-center gap-1.5">
         <button
           onClick={onOpenAlerts}
           className="relative p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/80 transition"
@@ -51,12 +51,14 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 
         <button
           onClick={onOpenDrawer}
-          className="p-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/80 transition"
-          aria-label="Open settings and menu"
+          className="py-1 px-2 rounded-xl text-slate-200 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 transition flex items-center gap-1 border border-slate-700/60 shadow-sm"
+          aria-label="Open menu and research suite"
         >
-          <Settings className="w-4 h-4 text-slate-400 hover:text-slate-200" />
+          <Menu className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-[11px] font-bold">Menu</span>
         </button>
       </div>
     </header>
+
   );
 };

@@ -64,25 +64,40 @@ import {
 import { LOCALIZATION_DATA } from '../utils/localization';
 import { OFFLINE_RESEARCH_DATA } from '../utils/offlineResearchData';
 
-const API_BASE = '/api';
+// Resolve API base URL: Supports VITE_API_URL for Render deployment, fallback to /api for Vercel/local
+const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '';
+const API_BASE = configuredApiUrl
+  ? `${configuredApiUrl.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
+  : '/api';
 
 /**
  * Robust JSON fetch wrapper that:
- * 1. Checks res.ok
- * 2. Checks content-type is application/json (preventing HTML fallbacks from Vercel SPA rewrites)
- * 3. Awaits res.json() inside the try-block so JSON syntax errors are safely caught
+ * 1. Implements a 4.5s AbortSignal timeout to prevent UI freezes on sleeping Render instances
+ * 2. Checks res.ok
+ * 3. Checks content-type is application/json (preventing HTML fallbacks from Vercel SPA rewrites)
+ * 4. Awaits res.json() safely inside the try-block
  */
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
-  if (!res.ok) {
-    throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
+async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs: number = 4500): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...init,
+      signal: init?.signal || controller.signal
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
+    }
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Expected application/json response but received "${contentType || 'non-JSON'}"`);
+    }
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timer);
   }
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/json')) {
-    throw new Error(`Expected application/json response but received "${contentType || 'non-JSON'}"`);
-  }
-  return (await res.json()) as T;
 }
+
 
 export const api = {
   async getDatasetSummary(): Promise<DatasetSummary> {

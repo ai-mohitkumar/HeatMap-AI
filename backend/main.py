@@ -86,23 +86,31 @@ def predict_location_direct(payload: LocationPredictionRequest):
 import os
 from fastapi.staticfiles import StaticFiles
 
-dist_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
-if os.path.exists(dist_path):
-    app.mount("/", StaticFiles(directory=dist_path, html=True), name="frontend")
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+frontend_dist = os.path.join(root_dir, "frontend", "dist")
+root_dist = os.path.join(root_dir, "dist")
+
+target_dist = frontend_dist if os.path.exists(frontend_dist) else (root_dist if os.path.exists(root_dist) else None)
+
+if target_dist and os.path.exists(os.path.join(target_dist, "index.html")):
+    app.mount("/", StaticFiles(directory=target_dist, html=True), name="frontend")
 else:
     @app.get("/")
     def root():
         return {
-            "service": "HeatMap AI API",
+            "service": "HeatShield AI API",
             "project": "Regional Heat-Stress Vulnerability Profiles for Priority Mapping Through Clustering",
             "mapped_id": "SIH26083",
             "status": "healthy",
             "endpoints": {
                 "docs": "/docs",
+                "health": "/api/health",
                 "dataset_summary": "/api/dataset/summary",
                 "evaluations": "/api/clustering/evaluations",
                 "optimal_k": "/api/clustering/optimal-k",
                 "profiles": "/api/clustering/profiles",
+                "climate_discovery": "/api/climate/discovery",
+                "climate_anomalies": "/api/climate/anomalies",
                 "hierarchical": "/api/hierarchical/comparison",
                 "pca": "/api/analysis/pca",
                 "map_stations": "/api/analysis/map-stations"
@@ -111,4 +119,6 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    server_port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=server_port, reload=True)
+

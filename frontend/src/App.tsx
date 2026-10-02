@@ -532,18 +532,29 @@ export function App() {
         availableYears={summary?.available_years || [2022, 2023, 2024, 2025]}
         activeYear={activeYear}
         isUpdating={isUpdatingK}
-        appMode={appMode}
+        appMode={sidebarTab === 'research' && researchViewTab === 'lab' ? 'lab' : appMode}
         lang={lang}
         onSelectLang={handleSelectLang}
         onTriggerEmergencyMode={handleTriggerEmergency}
         onToggleMode={(mode) => {
-          setAppMode(mode);
-          if (mode === 'safety') setSidebarTab('home');
-          else if (mode === 'research') setSidebarTab('research');
-          else if (mode === 'dashboard') setSidebarTab('insights');
-          else if (mode === 'lab') setSidebarTab('research');
+          if (mode === 'safety') {
+            setAppMode('safety');
+            setSidebarTab('home');
+          } else if (mode === 'research') {
+            setAppMode('research');
+            setSidebarTab('research');
+            setResearchViewTab('methodology');
+          } else if (mode === 'dashboard') {
+            setAppMode('dashboard');
+            setSidebarTab('insights');
+          } else if (mode === 'lab') {
+            setAppMode('research');
+            setSidebarTab('research');
+            setResearchViewTab('lab');
+          }
         }}
         onOpenAIAnalyst={() => setIsAnalystOpen(true)}
+
         onSelectK={handleSelectK}
         onSelectYear={handleSelectYear}
         onExportReport={handleExportReport}
@@ -583,15 +594,9 @@ export function App() {
 
         {/* Main Workspace Area (with pb-24 on mobile so bottom nav doesn't overlap) */}
         <div className="flex-1 min-w-0 bg-[#090F1F] overflow-x-hidden flex flex-col pb-24 md:pb-6">
-          {/* 1. Climate Intelligence Lab (RQ1–RQ6) */}
-          {appMode === 'lab' && (
-            <div className="p-4 sm:p-6">
-              <ClimateIntelligenceLab activeK={activeK} />
-            </div>
-          )}
-
-          {/* 2. Unified Command Center Hub (Matches uploaded reference mockup!) */}
+          {/* 1. Unified Command Center Hub (Matches uploaded reference mockup!) */}
           {appMode === 'safety' && sidebarTab === 'home' && (
+
             <HeatShieldHub
               selectedStationId={selectedSafetyStationId}
               onSelectStation={(stId) => {
