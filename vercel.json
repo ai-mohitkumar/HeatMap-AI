@@ -5,8 +5,8 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://heatshield-ai-backend-jls2.onrender.com/api/$1"
+      "source": "/api/:path*",
+      "destination": "https://heatshield-ai-backend-jls2.onrender.com/api/:path*"
     },
     {
       "source": "/(.*)",
