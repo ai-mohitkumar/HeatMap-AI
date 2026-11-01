@@ -27,6 +27,7 @@ export const HourlyForecastStrip: React.FC<HourlyForecastStripProps> = ({
   const [forecast, setForecast] = useState<HourlyForecastResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedHour, setSelectedHour] = useState<HourlyForecastItem | null>(null);
+  const [viewMode, setViewMode] = useState<'both' | 'chart' | 'cards'>('both');
 
   // Current system hour to highlight
   const currentHourNum = new Date().getHours();
@@ -117,8 +118,6 @@ export const HourlyForecastStrip: React.FC<HourlyForecastStripProps> = ({
       </div>
     );
   }
-
-  const [viewMode, setViewMode] = useState<'both' | 'chart' | 'cards'>('both');
 
   if (!forecast || forecast.hourly.length === 0) return null;
 
