@@ -54,24 +54,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobileMenuOpen = false,
   onToggleMobileMenu
 }) => {
-  const primaryNav = [
-    { id: 'home' as SidebarTab, label: getTranslation(lang, 'tab_home', 'Home'), icon: Home },
-    { id: 'apps' as SidebarTab, label: getTranslation(lang, 'tab_apps', 'iOS & Android Suite'), icon: Smartphone },
+  const citizenNav = [
+    { id: 'home' as SidebarTab, label: getTranslation(lang, 'tab_home', 'Home (Safety Overview)'), icon: Home },
+    { id: 'map' as SidebarTab, label: getTranslation(lang, 'tab_map', 'Live Heat Map'), icon: Map },
     { id: 'villages' as SidebarTab, label: getTranslation(lang, 'tab_villages', 'Villages & Districts'), icon: Building2 },
-    { id: 'map' as SidebarTab, label: getTranslation(lang, 'tab_map', 'Live Map'), icon: Map },
-    { id: 'risk' as SidebarTab, label: getTranslation(lang, 'tab_risk', 'Heat Risk'), icon: Flame },
-    { id: 'plan' as SidebarTab, label: getTranslation(lang, 'tab_plan', 'Plan & Routine'), icon: Calendar },
-    { id: 'family' as SidebarTab, label: getTranslation(lang, 'tab_family', 'Family Watchlist'), icon: Heart },
-    { id: 'worker' as SidebarTab, label: getTranslation(lang, 'tab_worker', 'Worker Mode'), icon: HardHat },
-    { id: 'sos' as SidebarTab, label: getTranslation(lang, 'tab_sos', 'Cooling & SOS'), icon: Snowflake },
+    { id: 'sos' as SidebarTab, label: getTranslation(lang, 'tab_sos', 'Cooling Shelters & SOS'), icon: Snowflake },
+    { id: 'risk' as SidebarTab, label: getTranslation(lang, 'tab_risk', 'Heat Risk Profiles'), icon: Flame },
   ];
 
-  const secondaryNav = [
-    { id: 'chat' as SidebarTab, label: getTranslation(lang, 'tab_chat', 'AI Assistant'), icon: Bot },
-    { id: 'research' as SidebarTab, label: getTranslation(lang, 'tab_research', 'Research Mode'), icon: FlaskConical },
-    { id: 'data' as SidebarTab, label: getTranslation(lang, 'tab_data', 'Data Explorer'), icon: Database },
+  const protectionNav = [
+    { id: 'plan' as SidebarTab, label: getTranslation(lang, 'tab_plan', 'Plan & Routine'), icon: Calendar },
+    { id: 'worker' as SidebarTab, label: getTranslation(lang, 'tab_worker', 'Worker Mode'), icon: HardHat },
+    { id: 'family' as SidebarTab, label: getTranslation(lang, 'tab_family', 'Family Watchlist'), icon: Heart },
+    { id: 'chat' as SidebarTab, label: getTranslation(lang, 'tab_chat', 'AI Safety Assistant'), icon: Bot },
+  ];
+
+  const researchNav = [
+    { id: 'research' as SidebarTab, label: getTranslation(lang, 'tab_research', 'Research & Defense'), icon: FlaskConical },
     { id: 'insights' as SidebarTab, label: getTranslation(lang, 'tab_insights', 'Model Insights'), icon: BarChart3 },
+    { id: 'data' as SidebarTab, label: getTranslation(lang, 'tab_data', 'Data Explorer'), icon: Database },
     { id: 'reports' as SidebarTab, label: getTranslation(lang, 'tab_reports', 'Reports & Export'), icon: FileText },
+  ];
+
+  const deviceNav = [
+    { id: 'apps' as SidebarTab, label: getTranslation(lang, 'tab_apps', 'iOS & Android Suite'), icon: Smartphone },
   ];
 
   const handleMobileNavClick = (tabId: SidebarTab) => {
@@ -81,67 +87,68 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  const renderNavGroup = (title: string, items: typeof citizenNav, badge?: string) => (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between px-3 py-1 text-[10px] uppercase font-bold tracking-wider text-slate-400">
+        <span>{title}</span>
+        {badge && (
+          <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            {badge}
+          </span>
+        )}
+      </div>
+      <nav className="space-y-0.5">
+        {items.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onSelectTab(item.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 text-left ${
+                isActive
+                  ? 'bg-[#1D2D50] text-blue-400 font-bold shadow-inner border-l-4 border-blue-500 rounded-l-none pl-2'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+              }`}
+            >
+              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+
   return (
     <>
       {/* ─────────────────────────────────────────────────────────────
           1. DESKTOP / TABLET SIDEBAR RAIL (Hidden on mobile phones!)
           ───────────────────────────────────────────────────────────── */}
-      <aside className="hidden md:flex w-60 shrink-0 bg-[#0B132B] border-r border-slate-800/80 flex-col justify-between select-none min-h-screen py-4">
-        <div className="px-3 space-y-6">
-          {/* Primary Navigation */}
-          <nav className="space-y-1">
-            {primaryNav.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => onSelectTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-left ${
-                    isActive
-                      ? 'bg-[#1D2D50]/90 text-blue-400 font-semibold shadow-inner border-l-4 border-blue-500 rounded-l-none pl-2.5'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+      <aside className="hidden md:flex w-64 shrink-0 bg-[#0B132B] border-r border-slate-800/80 flex-col justify-between select-none min-h-screen py-4 overflow-y-auto">
+        <div className="px-2 space-y-5">
+          {/* Group 1: Citizen Safety */}
+          {renderNavGroup('Citizen Safety', citizenNav)}
+
+          {/* Group 2: Protection & Planning */}
+          {renderNavGroup('Personal & Work', protectionNav)}
 
           {/* Divider */}
           <div className="border-t border-slate-800/80 mx-2" />
 
-          {/* Secondary Navigation */}
-          <nav className="space-y-1">
-            {secondaryNav.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => onSelectTab(item.id)}
-                  className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 text-left ${
-                    isActive
-                      ? 'bg-[#1D2D50]/90 text-blue-400 font-semibold shadow-inner border-l-4 border-blue-500 rounded-l-none pl-2.5'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                  }`}
-                >
-                  <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
+          {/* Group 3: Science & Research */}
+          {renderNavGroup('Science & Research', researchNav, 'Advanced')}
+
+          {/* Group 4: Device Suite */}
+          {renderNavGroup('Download & Suite', deviceNav)}
         </div>
 
         {/* Footer Motivational Quote */}
-        <div className="px-5 pt-6 pb-2 text-center">
+        <div className="px-5 pt-6 pb-2 text-center border-t border-slate-800/60 mt-4">
           <div className="flex items-center justify-center gap-1.5 mb-1 text-emerald-400/90">
             <Leaf className="w-3.5 h-3.5" />
           </div>
-          <p className="text-xs italic text-slate-400 leading-relaxed font-serif">
+          <p className="text-[11px] italic text-slate-400 leading-relaxed font-serif">
             “A Safer Tomorrow,<br />For a Healthier You”
           </p>
         </div>
@@ -253,13 +260,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
               </div>
 
-              {/* Section 1: Public Safety & Everyday Citizen Modes */}
+              {/* Section 1: Citizen Safety */}
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider px-2 block mb-2">
-                  Citizen Safety Suite
+                  Citizen Safety
                 </span>
                 <div className="space-y-1">
-                  {primaryNav.map((item) => {
+                  {citizenNav.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;
                     return (
@@ -283,13 +290,78 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </div>
 
-              {/* Section 2: Advanced AI, Data & Academic Research */}
+              {/* Section 2: Personal & Work Protection */}
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider px-2 block mb-2">
-                  Research &amp; Intelligence
+                  Personal &amp; Work
                 </span>
                 <div className="space-y-1">
-                  {secondaryNav.map((item) => {
+                  {protectionNav.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleMobileNavClick(item.id)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition ${
+                          isActive
+                            ? 'bg-[#1D2D50] text-blue-400 font-bold border-l-4 border-blue-500 rounded-l-none pl-2'
+                            : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
+                          <span>{item.label}</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Section 3: Advanced AI & Academic Research */}
+              <div>
+                <div className="flex items-center justify-between px-2 mb-2">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                    Science &amp; Research
+                  </span>
+                  <span className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    Advanced
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  {researchNav.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleMobileNavClick(item.id)}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition ${
+                          isActive
+                            ? 'bg-[#1D2D50] text-blue-400 font-bold border-l-4 border-blue-500 rounded-l-none pl-2'
+                            : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon className={`w-4 h-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
+                          <span>{item.label}</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Section 4: Device Suite */}
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider px-2 block mb-2">
+                  Download &amp; Suite
+                </span>
+                <div className="space-y-1">
+                  {deviceNav.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;
                     return (

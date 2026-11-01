@@ -448,64 +448,84 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
-        {/* Center: Top Mode Navigation Pills */}
-        <div className="hidden xl:flex items-center p-1 bg-[#131E3A] rounded-xl border border-slate-800 text-xs font-medium space-x-1 shrink-0">
-          <button
-            onClick={() => onToggleMode('safety')}
-            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition font-semibold ${
-              appMode === 'safety'
-                ? 'bg-emerald-600 text-white shadow'
-                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Shield className="w-3.5 h-3.5" />
-            <span>Public Safety</span>
-          </button>
+        {/* Center: Top Mode Navigation Pills (Segmented: Citizen Safety vs. Science & Research) */}
+        <div className="hidden lg:flex items-center p-1 bg-[#131E3A] rounded-xl border border-slate-800 text-xs font-medium shrink-0 shadow-inner">
+          {/* Citizen Safety Sector */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onToggleMode('safety')}
+              className={`px-2.5 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition font-semibold ${
+                appMode === 'safety'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <Shield className="w-3.5 h-3.5 text-emerald-300" />
+              <span>Public Safety</span>
+            </button>
 
-          <button
-            onClick={() => onToggleMode('dashboard')}
-            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
-              appMode === 'dashboard'
-                ? 'bg-blue-600 text-white shadow'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <LayoutDashboard className="w-3.5 h-3.5" />
-            <span>Dashboard</span>
-          </button>
+            <button
+              onClick={() => onToggleMode('dashboard')}
+              className={`px-2 xl:px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                appMode === 'dashboard'
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 text-blue-300" />
+              <span className="hidden xl:inline">Dashboard</span>
+              <span className="xl:hidden">Dash</span>
+            </button>
+          </div>
 
-          <button
-            onClick={() => onToggleMode('research')}
-            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
-              appMode === 'research'
-                ? 'bg-indigo-600 text-white shadow font-semibold'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <FlaskConical className="w-3.5 h-3.5" />
-            <span>Research</span>
-          </button>
+          {/* Visual Sector Divider */}
+          <div className="w-px h-4 bg-slate-700/70 mx-1.5 shrink-0" />
 
-          <button
-            onClick={() => onToggleMode('lab')}
-            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
-              appMode === 'lab'
-                ? 'bg-purple-600 text-white shadow font-semibold'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <BrainCircuit className="w-3.5 h-3.5 text-purple-300" />
-            <span>Climate Lab (RQ1–6)</span>
-          </button>
+          {/* Science & Viva Defense Sector */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onToggleMode('research')}
+              className={`px-2.5 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                appMode === 'research'
+                  ? 'bg-indigo-600 text-white shadow-md font-semibold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+              title="Academic Methodology, Multi-Criteria Optimization, ANOVA & Stability"
+            >
+              <FlaskConical className="w-3.5 h-3.5 text-indigo-300" />
+              <span>Research</span>
+            </button>
 
+            <button
+              onClick={() => onToggleMode('lab')}
+              className={`px-2 xl:px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+                appMode === 'lab'
+                  ? 'bg-purple-600 text-white shadow-md font-semibold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+              title="Climate Intelligence Laboratory (RQ1–RQ6)"
+            >
+              <BrainCircuit className="w-3.5 h-3.5 text-purple-300" />
+              <span className="hidden xl:inline">Climate Lab (RQ1–6)</span>
+              <span className="xl:hidden">Lab (RQ1–6)</span>
+              <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/30 text-purple-200 border border-purple-400/30 font-bold uppercase">
+                ADV
+              </span>
+            </button>
+          </div>
+
+          {/* Visual Sector Divider */}
+          <div className="w-px h-4 bg-slate-700/70 mx-1.5 shrink-0" />
+
+          {/* AI Grounded Safety Analyst */}
           <button
             onClick={onOpenAIAnalyst}
-            className="px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60 transition"
+            className="px-2.5 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60 transition group"
+            title="Local Risk Grounded AI Safety Analyst"
           >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>AI Analyst</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition" />
+            <span className="font-semibold text-slate-200">AI Analyst</span>
           </button>
-
         </div>
 
         {/* Right: Year Filter, Theme Toggle, Language, Emergency */}

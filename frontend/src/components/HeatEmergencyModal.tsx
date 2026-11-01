@@ -223,6 +223,21 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
               </div>
             </button>
 
+            {/* 2b. Direct 1077 Disaster Management Helpline */}
+            <button
+              type="button"
+              onClick={(e) => initiatePhoneCall('1077', e)}
+              className="flex items-center gap-3 p-3.5 bg-gradient-to-r from-purple-700 to-indigo-800 hover:from-purple-600 hover:to-indigo-700 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left w-full cursor-pointer"
+            >
+              <div className="p-2 bg-white/20 rounded-xl shrink-0 group-hover:rotate-12 transition">
+                <PhoneCall className="w-5 h-5 text-white" />
+              </div>
+              <div className="leading-snug">
+                <span className="block text-xs font-normal opacity-90">Disaster Authority (NDMA)</span>
+                <span>Call 1077 Control Room</span>
+              </div>
+            </button>
+
             {/* 3. Navigate to Nearest Cooling Shelter */}
             <button
               type="button"
@@ -264,7 +279,7 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
             <button
               type="button"
               onClick={handleBroadcast}
-              className="flex items-center gap-3 p-3.5 bg-[#1E293B] hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left cursor-pointer"
+              className="flex items-center gap-3 p-3.5 bg-[#1E293B] hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-white rounded-2xl font-bold text-sm shadow-md transition transform active:scale-95 group text-left cursor-pointer sm:col-span-2"
             >
               <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0 group-hover:scale-110 transition">
                 {isBroadcastSent ? <CheckCircle2 className="w-5 h-5 text-emerald-400" /> : <Heart className="w-5 h-5" />}
@@ -280,24 +295,46 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
             </button>
           </div>
 
+          {/* Red Flag Warning Signs */}
+          <div className="bg-rose-950/40 border border-rose-500/40 rounded-2xl p-3.5 text-xs text-rose-200">
+            <span className="font-extrabold text-rose-300 uppercase tracking-wide block mb-1">
+              🚨 Critical Heat Stroke Red Flags (Require 108 Call Immediately):
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-200 mt-1.5">
+              <span className="p-1.5 bg-rose-900/30 rounded-lg border border-rose-800/40">⚠️ Absence of Sweating (Hot, dry skin)</span>
+              <span className="p-1.5 bg-rose-900/30 rounded-lg border border-rose-800/40">⚠️ Confusion, slurred speech or delirium</span>
+              <span className="p-1.5 bg-rose-900/30 rounded-lg border border-rose-800/40">⚠️ Vomiting, seizures or loss of consciousness</span>
+              <span className="p-1.5 bg-rose-900/30 rounded-lg border border-rose-800/40">⚠️ Core body temperature &gt; 40°C (104°F)</span>
+            </div>
+          </div>
+
           {/* Immediate First-Aid Box */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-2.5">
             <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
               <ShieldAlert className="w-4 h-4" />
-              {getTranslation(lang, 'first_aid_title', 'Immediate NIOSH First-Aid Protocols')}
+              {getTranslation(lang, 'first_aid_title', 'Immediate NIOSH / Clinical First-Aid Protocols')}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px] text-slate-300">
               <div className="bg-slate-850 p-2.5 rounded-xl border border-slate-700/50 flex items-start gap-2">
                 <span className="text-base">1️⃣</span>
-                <span>{getTranslation(lang, 'first_aid_shade', 'Move person to air-conditioned shelter or deep shade.')}</span>
+                <div>
+                  <strong className="text-white block">Move to Shade</strong>
+                  <span>Relocate immediately to air-conditioned room or dense shade. Elevate feet slightly.</span>
+                </div>
               </div>
               <div className="bg-slate-850 p-2.5 rounded-xl border border-slate-700/50 flex items-start gap-2">
                 <span className="text-base">2️⃣</span>
-                <span>{getTranslation(lang, 'first_aid_water', 'Douse skin with cool water and fan aggressively.')}</span>
+                <div>
+                  <strong className="text-white block">Rapid Active Cooling</strong>
+                  <span>Place ice packs or cold wet cloths on <strong>neck, armpits, and groin</strong> (major blood vessels).</span>
+                </div>
               </div>
               <div className="bg-slate-850 p-2.5 rounded-xl border border-slate-700/50 flex items-start gap-2">
                 <span className="text-base">3️⃣</span>
-                <span>{getTranslation(lang, 'first_aid_hydrate', 'Sip cool water or electrolyte oral rehydration salts.')}</span>
+                <div>
+                  <strong className="text-white block">Electrolyte Rehydration</strong>
+                  <span>If conscious and alert, sip cool water or ORS solution. Do NOT give fluids if confused.</span>
+                </div>
               </div>
             </div>
           </div>

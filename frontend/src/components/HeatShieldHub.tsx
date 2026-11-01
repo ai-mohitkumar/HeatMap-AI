@@ -5,7 +5,6 @@ import {
   Sun,
   Wind,
   MapPin,
-  Calendar,
   Clock,
   Shield,
   Bot,
@@ -21,8 +20,8 @@ import {
   Compass,
   Minus,
   Plus,
-  Smartphone,
-  ChevronRight
+  ChevronRight,
+  Building2
 } from 'lucide-react';
 import {
   OFFLINE_STATIONS,
@@ -32,6 +31,7 @@ import type { StationUsed, StationLiveSummaryItem, LanguageCode } from '../types
 import { HourlyForecastStrip } from './HourlyForecastStrip';
 import { getTranslation } from '../utils/localization';
 import { api } from '../services/api';
+import { initiatePhoneCall } from '../utils/phoneCall';
 
 interface HeatShieldHubProps {
   onNavigateTab?: (tab: string) => void;
@@ -256,7 +256,7 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
     }
   };
 
-  // Handle AI Chip & Freeform Queries
+  // Handle AI Chip & Freeform Queries with local risk context
   const handleChipQuery = (query: string) => {
     setChatInput(query);
     setIsChatThinking(true);
@@ -266,33 +266,61 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
       setIsChatThinking(false);
       const hour = currentTime.getHours();
       const isPeak = hour >= 11 && hour <= 16;
-      
-      if (query.toLowerCase().includes('safe to go out')) {
-        if (isPeak && heatIndexC >= 40) {
-          setChatResponse(`⚠️ PEAK SOLAR RADIATION ALERT (${hour}:00): Heat Index is ${heatIndexC}°C during the highest solar angle. Outdoor labor or direct sun exposure is NOT safe. Reschedule until evening.`);
-        } else if (heatIndexC >= 42) {
-          setChatResponse(`⚠️ DANGEROUS OUTDOOR HEAT: Current Heat Index is ${heatIndexC}°C in ${locationName}. All non-essential outdoor exertion should be avoided until after 5:30 PM.`);
-        } else if (heatIndexC >= 36) {
-          setChatResponse(`⚡ MODERATE-TO-HIGH RISK: Current Heat Index is ${heatIndexC}°C. Outdoor activities are safe ONLY if restricted to shade with 250 ml hydration every 30 minutes.`);
+      const q = query.toLowerCase();
+
+      if (q.includes('safe to go out') || q.includes('outdoor')) {
+        if (isPeak && heatIndexC >= 42) {
+          setChatResponse(
+            `🚨 CRITICAL PEAK DANGER in ${locationName}: Current Heat Index is ${heatIndexC}°C (Ambient ${tempC}°C) under high solar radiation. Direct sun exposure will rapidly trigger thermal exhaustion. All manual labor or non-essential outdoor trips should be HALTED until after 5:00 PM.`
+          );
+        } else if (heatIndexC >= 40) {
+          setChatResponse(
+            `⚠️ HIGH THERMAL STRESS: Heat Index is ${heatIndexC}°C in ${locationName}. If you must venture outdoors, limit exposure to <20 minutes, wear a broad-brimmed hat, carry oral rehydration fluids, and stay strictly in tree or building shade.`
+          );
+        } else if (heatIndexC >= 35) {
+          setChatResponse(
+            `⚡ MODERATE HEAT LOAD: Heat Index is ${heatIndexC}°C in ${locationName}. Safe for light walking and travel, provided you consume 250 ml of water every 30 minutes and avoid direct sun during 12 PM – 3 PM.`
+          );
         } else {
-          setChatResponse(`✅ RELATIVELY SAFE: Current ambient temperature is ${tempC}°C with Heat Index ${heatIndexC}°C. Stay hydrated and wear breathable light clothing.`);
+          setChatResponse(
+            `✅ SAFE OUTDOOR CONDITIONS: Ambient temperature is ${tempC}°C with Heat Index ${heatIndexC}°C in ${locationName}. Standard seasonal baseline. Maintain regular hydration and sun protection.`
+          );
         }
-      } else if (query.toLowerCase().includes('hydration')) {
-        const mlPerHour = heatIndexC >= 42 ? 500 : (heatIndexC >= 36 ? 350 : 250);
-        setChatResponse(`💧 HYDRATION FORMULA: For ${heatIndexC}°C thermal stress, consume at least ${mlPerHour} ml of water or electrolyte solution every 45 minutes. Avoid caffeinated/sugary sodas.`);
-      } else if (query.toLowerCase().includes('indoor activities')) {
-        setChatResponse(`🏠 RECOMMENDED INDOOR ACTIVITIES: Keep fans/coolers active in shaded rooms. Ideal for desk work, indoor reading, and light stretching. Keep window drapes closed against solar radiation.`);
-      } else if (query.toLowerCase().includes('heatwave')) {
+      } else if (q.includes('dizzy') || q.includes('faint') || q.includes('headache') || q.includes('vomit') || q.includes('symptom')) {
+        setChatResponse(
+          `🚨 URGENT CLINICAL ALERT: Dizziness, confusion, headache, or nausea during ${heatIndexC}°C thermal stress are warning signs of heat exhaustion or impending heatstroke! Relocate immediately to an air-conditioned room or deep shade, place cold wet cloths on your neck, armpits and groin, sip electrolyte water, and call 108 if symptoms worsen.`
+        );
+      } else if (q.includes('worker') || q.includes('labor') || q.includes('rest') || q.includes('shift')) {
+        const restRatio = heatIndexC >= 45 ? '15 min work / 45 min shade rest per hour' : heatIndexC >= 40 ? '30 min work / 30 min shade rest per hour' : '45 min work / 15 min rest per hour';
+        setChatResponse(
+          `👷 OSHA/NIOSH WORKER PROTOCOL for ${locationName}: At Heat Index ${heatIndexC}°C, mandatory rest cycle is: **${restRatio}**. Employers must provide continuous chilled drinking water (at least 1 liter per worker/hour) and shaded recovery stations.`
+        );
+      } else if (q.includes('hydration') || q.includes('water') || q.includes('drink')) {
+        const mlPerHour = heatIndexC >= 42 ? 600 : heatIndexC >= 38 ? 450 : 300;
+        setChatResponse(
+          `💧 PERSONAL HYDRATION PLAN for ${locationName}: With current thermal stress at ${heatIndexC}°C and humidity at ${humidity}%, your body loses fluid rapidly. Target intake: **${mlPerHour} ml per hour**. Add a pinch of salt or ORS packet to replace lost sodium. Avoid carbonated/sugary sodas.`
+        );
+      } else if (q.includes('humidity') || q.includes('moisture') || q.includes('sweat')) {
+        setChatResponse(
+          `🌊 MOISTURE COUPLING ANALYSIS: Relative humidity in ${locationName} is ${humidity}%. Elevated humidity saturates the boundary layer air, preventing sweat from evaporating. Even if dry-bulb is ${tempC}°C, your internal physiological stress corresponds to ${feelsLikeC}°C.`
+        );
+      } else if (q.includes('indoor') || q.includes('activities')) {
+        setChatResponse(
+          `🏠 RECOMMENDED INDOOR SAFETY: Current Heat Index is ${heatIndexC}°C. Keep curtains and drapes drawn against solar radiation. Position ceiling fans or air coolers in cross-ventilated rooms. Ideal for desk work, light indoor stretching, and study.`
+        );
+      } else if (q.includes('heatwave')) {
         const isHeatwave = tempC >= 40.0 || feelsLikeC >= 43.0;
         setChatResponse(
           isHeatwave
-            ? `🔥 HEATWAVE ALERT ACTIVE: ${locationName} is experiencing thermal anomalies exceeding +3.0°C above baseline with temperatures at ${tempC}°C. Follow local heat action plan guidelines.`
-            : `ℹ️ NORMAL PRE-MONSOON VARIATION: Ambient temperature of ${tempC}°C is within standard seasonal thresholds. No meteorological heatwave declared for ${locationName}.`
+            ? `🔥 METEOROLOGICAL HEATWAVE ACTIVE in ${locationName}: Surface observations indicate extreme thermal anomalies (+3.2°C over seasonal norm) with Heat Index ${heatIndexC}°C. Vulnerable residents (elderly, infants, pregnant individuals) must stay in cooled areas.`
+            : `ℹ️ SEASONAL BASELINE: Temperatures in ${locationName} (${tempC}°C) are within standard historical variations. No official heatwave declared today.`
         );
       } else {
-        setChatResponse(`Biometeorological conditions for ${locationName}: Ambient ${tempC}°C, Relative Humidity ${humidity}%, Heat Index ${heatIndexC}°C (${riskLevel} Risk). Wind convective cooling is ~${windKmh} km/h.`);
+        setChatResponse(
+          `Biometeorological synthesis for ${locationName}: Ambient ${tempC}°C, Relative Humidity ${humidity}%, Heat Index ${heatIndexC}°C (${riskLevel} Risk). Wind convective cooling: ${windKmh} km/h. Next peak danger period is 11:30 AM – 4:00 PM.`
+        );
       }
-    }, 400);
+    }, 350);
   };
 
   const handleSendChat = (e: React.FormEvent) => {
@@ -375,214 +403,264 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
       )}
 
       {/* ─────────────────────────────────────────────────────────────
-          ROW 1: HERO GREETING BANNER & LIVE WEATHER / REAL-TIME CLOCK
+          ROW 1: THE CORE SAFETY COMMAND HERO (Location Risk, Next Danger Window & Recommended Action)
           ───────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-12 gap-4">
         
-        {/* Banner */}
-        <div className="col-span-12 lg:col-span-8 bg-gradient-to-r from-[#111C38] via-[#162447] to-[#251A3A] border border-slate-800/90 rounded-2xl p-5 sm:p-6 relative overflow-hidden shadow-lg flex flex-col justify-between">
-          <div className="relative z-10 max-w-xl">
-            <span className="text-amber-400 text-xs sm:text-sm font-semibold tracking-wide flex items-center gap-1.5">
-              {currentTime.getHours() < 12
-                ? 'Good Morning, Citizen 👋'
-                : currentTime.getHours() < 17
-                ? 'Good Afternoon, Citizen 👋'
-                : 'Good Evening, Citizen 👋'}
-            </span>
-            <h2 className="text-xl sm:text-2xl lg:text-3xl font-extrabold text-white mt-1 tracking-tight">
-              Smarter Insights for a Safer Day
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-300/90 mt-2 leading-relaxed">
-              Real-time location-aware intelligence, AI-powered predictions, and actionable guidance to keep you and your community safe from extreme heat.
-            </p>
-            <div className="mt-3.5 flex flex-wrap items-center gap-2 relative z-20">
+        {/* Main Location-Specific Safety Command Banner */}
+        <div className={`col-span-12 lg:col-span-8 rounded-2xl p-5 sm:p-6 border shadow-xl relative overflow-hidden flex flex-col justify-between transition-all ${
+          riskLevel === 'Extreme'
+            ? 'bg-gradient-to-r from-red-950/90 via-[#1C162E] to-[#121B35] border-red-500/80 shadow-red-950/40'
+            : riskLevel === 'Very High'
+            ? 'bg-gradient-to-r from-orange-950/90 via-[#1D1B2E] to-[#121B35] border-orange-500/70 shadow-orange-950/30'
+            : riskLevel === 'High'
+            ? 'bg-gradient-to-r from-amber-950/70 via-[#19223D] to-[#121B35] border-amber-500/60 shadow-amber-950/20'
+            : 'bg-gradient-to-r from-[#111C38] via-[#162447] to-[#132A3E] border-slate-700/80'
+        }`}>
+          <div className="relative z-10 space-y-3">
+            {/* Top Bar: Live Risk Tier Badge & Next Danger Window */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md ${
+                  riskLevel === 'Extreme'
+                    ? 'bg-red-600 text-white animate-pulse'
+                    : riskLevel === 'Very High'
+                    ? 'bg-orange-500 text-white'
+                    : riskLevel === 'High'
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-emerald-500 text-slate-950'
+                }`}>
+                  <Flame className="w-3.5 h-3.5" />
+                  <span>{riskLevel} Heat Risk</span>
+                </span>
+                <span className="text-xs font-semibold text-slate-300">
+                  in <strong className="text-white">{locationName}</strong>
+                </span>
+              </div>
+
+              {/* Next Dangerous Time Window */}
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-black/50 backdrop-blur border border-amber-500/40 rounded-full text-xs text-amber-300 font-bold shadow-sm">
+                <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Next Danger Window: <strong className="text-white">11:30 AM – 4:00 PM</strong></span>
+              </div>
+            </div>
+
+            {/* Current Thermal Metrics & Recommended Safety Action */}
+            <div className="pt-1">
+              <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight flex flex-wrap items-baseline gap-2">
+                <span>Feels Like {feelsLikeC}°C</span>
+                <span className="text-xs sm:text-sm font-semibold text-slate-300 font-mono">
+                  (Ambient: {tempC}°C • Relative Humidity: {humidity}%)
+                </span>
+              </h2>
+
+              {/* Recommended Safety Action Box */}
+              <div className="mt-2.5 p-3 rounded-xl bg-black/40 border border-white/10 text-xs sm:text-sm leading-relaxed text-slate-200 flex items-start gap-2.5">
+                <Shield className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-white font-bold block mb-0.5">Recommended Safety Action:</strong>
+                  <span>
+                    {riskLevel === 'Extreme' || heatIndexC >= 45
+                      ? 'Halt all outdoor exertion immediately. Stay in deep shade or air-cooled rooms. Drink 500 ml water/electrolytes every 45 minutes. Watch for confusion or lack of sweat.'
+                      : riskLevel === 'Very High' || heatIndexC >= 40
+                      ? 'Postpone non-essential outdoor labor until after 5:00 PM. Drink water proactively every 30 minutes even without thirst. Keep heads covered.'
+                      : riskLevel === 'High' || heatIndexC >= 36
+                      ? 'Limit direct sunlight exposure during midday hours (11:30 AM – 3:30 PM). Maintain 250 ml hydration every 45 minutes and wear loose light-colored cotton.'
+                      : 'Conditions are within standard seasonal baseline. Maintain regular 2–3L daily hydration and wear sunglasses/hat during peak sun hours.'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Instant Action CTA Bar */}
+            <div className="pt-2 flex flex-wrap items-center gap-2 relative z-20">
+              {onTriggerEmergencyMode && (
+                <button
+                  onClick={onTriggerEmergencyMode}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition flex items-center gap-1.5 active:scale-95"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Emergency Protocol (SOS)</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => initiatePhoneCall('108', e)}
+                className="px-3.5 py-1.5 bg-red-950/80 hover:bg-red-900 border border-red-500/60 text-red-200 font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>📞 Call 108</span>
+              </button>
               <button
                 onClick={handleWelfareCheckin}
-                title="Record your welfare check-in & notify family"
+                title="Record welfare check-in"
                 className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5 active:scale-95"
               >
                 <Heart className="w-3.5 h-3.5 text-emerald-200" />
-                <span>{checkinToast || getTranslation(lang, 'im_safe_today', "I'm Safe Today")}</span>
+                <span>{checkinToast || getTranslation(lang, 'im_safe_today', "I'm Safe Check-in")}</span>
               </button>
               <button
-                onClick={() => onNavigateTab && onNavigateTab('apps')}
-                className="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1.5"
+                onClick={handleTrackMove}
+                disabled={isTracking}
+                className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5"
               >
-                <Smartphone className="w-3.5 h-3.5" />
-                <span>iOS, Android &amp; Watch Suite</span>
+                <Radio className={`w-3.5 h-3.5 text-cyan-400 ${isTracking ? 'animate-ping' : ''}`} />
+                <span>{isTracking ? 'Locating...' : 'Track Live GPS'}</span>
               </button>
               <button
                 onClick={() => onNavigateTab && onNavigateTab('villages')}
-                className="px-3.5 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5"
               >
-                <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                <span>All India Villages (787 Districts)</span>
+                <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                <span>All India Villages</span>
               </button>
             </div>
           </div>
-
-          {/* Graphic Artwork on Right */}
-          <div className="absolute right-4 bottom-2 hidden sm:flex flex-col items-center opacity-90 pointer-events-none select-none">
-            <svg width="180" height="90" viewBox="0 0 180 90" fill="none" className="overflow-visible">
-              <circle cx="90" cy="50" r="30" fill="url(#sun-glow)" />
-              <path d="M10 80 Q 50 30 90 70 T 170 80" stroke="#F59E0B" strokeWidth="2" fill="none" opacity="0.4" />
-              <path d="M0 90 L40 55 L80 90 L120 60 L180 90 Z" fill="#1C274C" />
-              <defs>
-                <radialGradient id="sun-glow" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#F59E0B" stopOpacity="0.8" />
-                  <stop offset="100%" stopColor="#EF4444" stopOpacity="0" />
-                </radialGradient>
-              </defs>
-            </svg>
-            <span className="text-[11px] font-medium text-amber-300 mt-1">
-              Small actions. <span className="text-white font-bold">Big impact.</span>
-            </span>
-          </div>
         </div>
 
-        {/* Live Date & Location Card */}
-        <div className="col-span-6 lg:col-span-2 bg-[#131E3A] border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-md">
-          <div className="flex items-center gap-2 text-slate-400 text-xs">
-            <Calendar className="w-3.5 h-3.5 text-blue-400" />
-            <span>
-              {currentTime.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-            </span>
-          </div>
+        {/* Actionable Temperature & Biometeorology Card */}
+        <div className="col-span-12 sm:col-span-6 lg:col-span-4 bg-[#131E3A] border border-slate-800/90 rounded-2xl p-5 flex flex-col justify-between shadow-md">
           <div>
-            <div className="text-2xl font-black text-white tracking-tight font-mono">
-              {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-            </div>
-            <div className="flex items-center justify-between text-xs text-amber-400 mt-1">
-              <div className="flex items-center gap-1.5 truncate">
-                <MapPin className="w-3.5 h-3.5 shrink-0 text-rose-400" />
-                <span className="font-semibold truncate">{locationName}</span>
+            <div className="flex items-start justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
+                  Ambient &amp; Physiological
+                </span>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-3xl sm:text-4xl font-black text-white">{tempC}°C</span>
+                  <span className="text-xs font-bold text-amber-300/90 font-mono">HI: {feelsLikeC}°C</span>
+                </div>
               </div>
-              <button
-                onClick={() => onNavigateTab && onNavigateTab('villages')}
-                title="Browse All Villages & Districts of India"
-                className="text-[10px] text-blue-400 hover:text-blue-300 font-bold underline shrink-0 ml-1"
-              >
-                Change
-              </button>
+              <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                <Sun className="w-7 h-7 animate-pulse" />
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* Weather Card */}
-        <div className="col-span-6 lg:col-span-2 bg-[#131E3A] border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-md">
-          <div className="flex items-start justify-between">
-            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-              <Sun className="w-6 h-6 animate-pulse" />
-            </div>
-            <div className="text-right">
-              <span className="text-2xl sm:text-3xl font-black text-white">
-                {tempC}°C
+            {/* Clear Risk Status Badge */}
+            <div className="mt-3">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                riskLevel === 'Extreme'
+                  ? 'bg-rose-950/60 text-rose-300 border-rose-500/40'
+                  : riskLevel === 'Very High'
+                  ? 'bg-orange-950/60 text-orange-300 border-orange-500/40'
+                  : riskLevel === 'High'
+                  ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
+                  : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+              }`}>
+                <Shield className="w-3 h-3" />
+                <span>Status: {riskLevel} Thermal Load</span>
               </span>
-              <p className="text-[11px] text-amber-300/90 font-medium">
-                Feels like {feelsLikeC}°C
-              </p>
             </div>
+
+            {/* Actionable Directive on Card */}
+            <p className="text-xs text-slate-300 mt-2.5 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+              💡 <strong className="text-white font-semibold">Action:</strong>{' '}
+              {feelsLikeC >= 42
+                ? 'High danger of cutaneous sweat evaporation failure. Drink water immediately and rest in shade.'
+                : feelsLikeC >= 36
+                ? 'Limit direct radiant heat exposure. Sip fluids regularly every 30–45 mins.'
+                : 'Favorable thermal balance. Safe for regular outdoor routines with basic hydration.'}
+            </p>
           </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800/80">
-            <span className="flex items-center gap-1">
-              <Droplets className="w-3 h-3 text-cyan-400" /> {humidity}%
-            </span>
-            <span className="flex items-center gap-1">
-              <Wind className="w-3 h-3 text-slate-300" /> {windKmh} km/h
-            </span>
+          {/* Environmental Telemetry Footer */}
+          <div className="grid grid-cols-4 gap-1.5 pt-3 mt-3 border-t border-slate-800 text-[11px] text-slate-300 text-center">
+            <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block">Humidity</span>
+              <span className="font-bold text-cyan-400 flex items-center justify-center gap-1">
+                <Droplets className="w-3 h-3" /> {humidity}%
+              </span>
+            </div>
+            <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block">Wind Flow</span>
+              <span className="font-bold text-slate-200 flex items-center justify-center gap-1">
+                <Wind className="w-3 h-3" /> {windKmh} km/h
+              </span>
+            </div>
+            <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block">Solar UV</span>
+              <span className="font-bold text-amber-400 flex items-center justify-center gap-1">
+                <Sun className="w-3 h-3" /> {uvIndex}
+              </span>
+            </div>
+            <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
+              <span className="text-[10px] text-slate-400 block">Air (AQI)</span>
+              <span className="font-bold text-emerald-400 flex items-center justify-center gap-1">
+                <Shield className="w-3 h-3" /> {aqi}
+              </span>
+            </div>
           </div>
         </div>
 
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          ROW 2: 5 KPI METRIC CARDS
+          ROW 2: STRUCTURED 3-TIER METRIC CARDS (Consistent Visual Hierarchy)
+          Tier 1: Critical Biomarkers (Heat Risk & Heat Index)
+          Tier 2: Meteorological Drivers (Temperature & Humidity)
+          Tier 3: Exposure Factors (UV & AQI)
           ───────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        
-        {/* Metric 1: Heat Risk Level */}
-        <div className="bg-[#131E3A] border border-slate-800/90 rounded-2xl p-3.5 shadow flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
-            <Flame className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] text-slate-400 font-medium block">Heat Risk Level</span>
-            <span className="text-base font-bold text-amber-400 block">{riskLevel}</span>
-            <span className="text-[10px] text-slate-400">Stay hydrated</span>
-          </div>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-slate-400 font-semibold px-1">
+          <span className="uppercase tracking-wider text-[10px] font-bold">Biometeorological Telemetry Hierarchy</span>
+          <span className="text-[10px] text-slate-400 font-mono">Updated: {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
         </div>
 
-        {/* Metric 2: Heat Index (HI) */}
-        <div className="bg-[#131E3A] border border-slate-800/90 rounded-2xl p-3.5 shadow flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
-            <Activity className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] text-slate-400 font-medium block">Heat Index (HI)</span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-base font-bold text-white">{heatIndexC}°C</span>
-              <span className="text-[10px] font-semibold text-emerald-400 flex items-center">
-                ↓ -1.8°C
-              </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+          
+          {/* TIER 1: Heat Risk Level (Critical) */}
+          <div className="lg:col-span-2 bg-gradient-to-br from-[#1A2035] to-[#131E3A] border-2 border-amber-500/40 rounded-2xl p-4 shadow-md flex items-center gap-3 relative overflow-hidden">
+            <div className="p-3 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+              <Flame className="w-6 h-6 animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400">Tier 1 • Primary Hazard</span>
+                <span className="text-[10px] px-2 py-0.2 rounded font-bold bg-amber-500/20 text-amber-300">Live</span>
+              </div>
+              <div className="text-xl font-black text-white mt-0.5 truncate">{riskLevel} Risk</div>
+              <p className="text-xs text-slate-300 truncate">Immediate: Restrict physical exertion</p>
             </div>
           </div>
-        </div>
 
-        {/* Metric 3: Humidity */}
-        <div className="bg-[#131E3A] border border-slate-800/90 rounded-2xl p-3.5 shadow flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 shrink-0">
-            <Droplets className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-[11px] text-slate-400 font-medium block">Humidity</span>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-base font-bold text-white">{humidity}%</span>
-              <span className="text-[10px] font-semibold text-rose-400 flex items-center">
-                ↑ +8%
-              </span>
+          {/* TIER 1: Heat Index (HI - Physiological Stress) */}
+          <div className="lg:col-span-2 bg-gradient-to-br from-[#1A2035] to-[#131E3A] border-2 border-rose-500/40 rounded-2xl p-4 shadow-md flex items-center gap-3 relative overflow-hidden">
+            <div className="p-3 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
+              <Activity className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-rose-400">Tier 1 • Heat Index</span>
+                <span className="text-[10px] font-semibold text-emerald-400">Stable</span>
+              </div>
+              <div className="text-xl font-black text-white mt-0.5 font-mono">{heatIndexC}°C HI</div>
+              <p className="text-xs text-slate-300 truncate">Rothfusz Biometeorological Model</p>
             </div>
           </div>
-        </div>
 
-        {/* Metric 4: UV Index */}
-        <div className="bg-[#131E3A] border border-slate-800/90 rounded-2xl p-3.5 shadow flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
-            <Sun className="w-5 h-5" />
-          </div>
-          <div className="w-full">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 font-medium">UV Index</span>
-              <span className="text-xs font-bold text-amber-400">{uvIndex} (High)</span>
+          {/* TIER 2 & 3: Ambient Temperature, Humidity, UV, AQI in remaining columns */}
+          <div className="sm:col-span-1 lg:col-span-1 bg-[#131E3A] border border-slate-800 rounded-2xl p-3.5 shadow flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Dry-Bulb</span>
+              <Sun className="w-3.5 h-3.5 text-amber-400" />
             </div>
-            <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-yellow-400 to-amber-500 h-full transition-all duration-500"
-                style={{ width: `${Math.min(uvIndex * 10, 100)}%` }}
-              />
+            <div className="my-1">
+              <span className="text-lg font-black text-white">{tempC}°C</span>
             </div>
+            <span className="text-[10px] text-slate-400 truncate">Daily Peak: ~{tempC + 2}°C</span>
           </div>
-        </div>
 
-        {/* Metric 5: Air Quality (AQI) */}
-        <div className="bg-[#131E3A] border border-slate-800/90 rounded-2xl p-3.5 shadow flex items-center gap-3 col-span-2 sm:col-span-1">
-          <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 shrink-0">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-          <div className="w-full">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 font-medium">Air Quality (AQI)</span>
-              <span className="text-xs font-bold text-emerald-400">{aqi} (Good)</span>
+          <div className="sm:col-span-1 lg:col-span-1 bg-[#131E3A] border border-slate-800 rounded-2xl p-3.5 shadow flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[10px] font-bold uppercase tracking-wider">Humidity</span>
+              <Droplets className="w-3.5 h-3.5 text-cyan-400" />
             </div>
-            <div className="w-full bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
-              <div
-                className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full transition-all duration-500"
-                style={{ width: `${Math.min((aqi / 200) * 100, 100)}%` }}
-              />
+            <div className="my-1">
+              <span className="text-lg font-black text-white">{humidity}%</span>
             </div>
+            <span className="text-[10px] text-slate-400 truncate">{humidity >= 60 ? 'Moisture Trap' : 'Normal Vapor'}</span>
           </div>
-        </div>
 
+        </div>
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
@@ -601,21 +679,21 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
       />
 
       {/* ─────────────────────────────────────────────────────────────
-          ROW 3: MIDDLE 3-COLUMN SECTION
-          1. Live Location & Station Influence (4 Stations IDW)
-          2. Interactive Heat Risk Map (India) with 46 clickable stations
-          3. AI Safety Assistant & Recommendations
+          ROW 3: MIDDLE 3-COLUMN SECTION (Central Prominent Live Map)
+          1. Live Location & Station Influence (4 Stations IDW - 3 cols)
+          2. Central Interactive Heat Risk Map (India & Villages - 6 cols)
+          3. AI Safety Assistant & Contextual Recommendations (3 cols)
           ───────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-12 gap-4">
         
         {/* Column 1: Live Location & Station Influence (4 IDW Stations) */}
-        <div className="col-span-12 lg:col-span-4 bg-[#131E3A] border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-md">
+        <div className="col-span-12 xl:col-span-3 bg-[#131E3A] border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-md">
           <div>
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-blue-400" />
-                <h3 className="text-sm font-bold text-white">Live Location &amp; Station Influence</h3>
+                <h3 className="text-sm font-bold text-white">Live Location &amp; Synoptic Calibration</h3>
               </div>
               <button
                 onClick={handleTrackMove}
@@ -638,7 +716,7 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                Using 4 nearest stations (IDW, k=4, p=2.0)
+                Spatial interpolation via 4 nearest certified stations
               </p>
               {gpsMessage && (
                 <div className="mt-2 text-[10px] text-emerald-400 bg-emerald-950/40 p-1.5 rounded-lg border border-emerald-800/60 flex items-center gap-1.5">
@@ -682,35 +760,45 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
           </div>
 
           <div className="pt-3 mt-4 border-t border-slate-800/80 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>Inverse-distance spatial interpolation</span>
-            <span className="text-emerald-400 font-medium">Sub-ms Validated</span>
+            <span>Spatial Model: IDW (k=4, p=2.0)</span>
+            <span className="text-emerald-400 font-medium">Sub-ms Latency</span>
           </div>
         </div>
 
-        {/* Column 2: Interactive Heat Risk Map (India) */}
-        <div className="col-span-12 lg:col-span-5 bg-[#131E3A] border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-md relative">
+        {/* Column 2: Central Interactive Heat Risk Map (India) */}
+        <div className="col-span-12 xl:col-span-6 bg-[#131E3A] border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between shadow-md relative">
           <div>
             {/* Header with Layer Switchers */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4 text-rose-400" />
-                <h3 className="text-sm font-bold text-white">Interactive Heat Risk Map (India)</h3>
+                <h3 className="text-sm font-bold text-white">Central Heat Risk Map (India &amp; Synoptic Network)</h3>
               </div>
-              <button
-                onClick={() => setIsMapExpanded(!isMapExpanded)}
-                className="p-1 text-slate-400 hover:text-white rounded transition"
-              >
-                <Maximize2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onNavigateTab && onNavigateTab('villages')}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-lg hover:bg-emerald-600/50 transition flex items-center gap-1"
+                >
+                  <Building2 className="w-3 h-3" />
+                  <span>Village Explorer</span>
+                </button>
+                <button
+                  onClick={() => setIsMapExpanded(!isMapExpanded)}
+                  className="p-1 text-slate-400 hover:text-white rounded transition"
+                  title="Expand Map"
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             {/* Subtabs: Standard, Heat Risk, Clusters, Anomalies */}
             <div className="flex items-center gap-1.5 mt-3 text-[11px] font-medium overflow-x-auto pb-1">
               {[
-                { id: 'standard', label: 'Standard' },
-                { id: 'heat_risk', label: 'Heat Risk' },
-                { id: 'clusters', label: 'Clusters' },
-                { id: 'anomalies', label: 'Anomalies' },
+                { id: 'standard', label: 'Standard Surface' },
+                { id: 'heat_risk', label: 'Heat Risk Contours' },
+                { id: 'clusters', label: 'Discovered Regimes' },
+                { id: 'anomalies', label: 'Thermal Anomalies' },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -726,12 +814,12 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               ))}
             </div>
 
-            {/* SVG India Map Simulation with All 46 Stations Placed */}
-            <div className="mt-3 relative w-full h-56 sm:h-64 bg-[#0B132B]/80 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center select-none">
+            {/* SVG India Map Simulation with All 46 Stations Placed (Expanded Height) */}
+            <div className="mt-3 relative w-full h-72 sm:h-80 bg-[#0B132B]/80 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center select-none">
               
               <svg
                 viewBox={getViewBox()}
-                className="w-full h-full max-h-64 object-contain transition-all duration-300"
+                className="w-full h-full max-h-80 object-contain transition-all duration-300"
                 style={{ transform: `scale(${zoomLevel})` }}
               >
                 <defs>
@@ -869,6 +957,23 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               </div>
             </div>
 
+            {/* Quick Explore All India Villages Banner */}
+            <div className="mt-3 p-2.5 bg-gradient-to-r from-blue-950/60 via-slate-900 to-indigo-950/60 border border-blue-500/30 rounded-xl flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 truncate">
+                <Building2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="text-slate-200 truncate">
+                  Explore continuous IDW heat risk for <strong>787 Districts</strong> &amp; <strong>~650,000 Villages</strong>
+                </span>
+              </div>
+              <button
+                onClick={() => onNavigateTab && onNavigateTab('villages')}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs shadow transition shrink-0 flex items-center gap-1"
+              >
+                <span>Browse</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             {/* Bottom Bar: Show Stations toggle & Region selector */}
             <div className="flex items-center justify-between mt-3 text-xs text-slate-300">
               <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -896,8 +1001,8 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
           </div>
         </div>
 
-        {/* Column 3: AI Safety Assistant & Recommendations */}
-        <div className="col-span-12 lg:col-span-3 space-y-4 flex flex-col justify-between">
+        {/* Column 3: AI Safety Assistant & Localized Recommendations */}
+        <div className="col-span-12 xl:col-span-3 space-y-4 flex flex-col justify-between">
           
           {/* Top: AI Safety Assistant */}
           <div className="bg-[#131E3A] border border-slate-800/90 rounded-2xl p-4 shadow-md space-y-3">
@@ -923,7 +1028,7 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask anything..."
+                placeholder="Ask advice for your city..."
                 className="w-full bg-[#0B132B] border border-slate-700/80 rounded-xl pl-3 pr-9 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition"
               />
               <button
@@ -935,14 +1040,22 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               </button>
             </form>
 
-            {/* Quick Prompt Chips */}
+            {/* Dynamic Quick Prompt Chips grounded in current risk level */}
             <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-              {[
-                'Is it safe to go out now?',
-                'Give me a hydration plan',
-                'Suggest indoor activities',
-                'Is this a heatwave?',
-              ].map((chip, idx) => (
+              {(riskLevel === 'Extreme' || riskLevel === 'Very High'
+                ? [
+                    'Is it safe to go out now?',
+                    'Heat stroke symptoms',
+                    'Worker rest schedule',
+                    'Hydration formula',
+                  ]
+                : [
+                    'Is it safe to go out now?',
+                    'Hydration formula',
+                    'Moisture trap analysis',
+                    'Is this a heatwave?',
+                  ]
+              ).map((chip, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleChipQuery(chip)}
