@@ -54,7 +54,6 @@ import {
   evaluateOfflineActivity,
   checkOfflineSymptoms,
   getOfflineFamilyStatus,
-  getOfflineAssistantChat,
   interpolateLocationFeaturesOffline,
   getOfflineHourlyForecast,
   getOfflineStationExplanation,
@@ -63,6 +62,7 @@ import {
 
 import { LOCALIZATION_DATA } from '../utils/localization';
 import { OFFLINE_RESEARCH_DATA } from '../utils/offlineResearchData';
+import { answerHeatSafetyQuery } from '../utils/universalAIEngine';
 
 // Resolve API base URL: Supports VITE_API_URL for Render deployment, fallback to /api for Vercel/local
 const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || '';
@@ -786,7 +786,13 @@ export const api = {
   async queryAssistantChat(stationId: string, query: string): Promise<AssistantChatResponse> {
     try {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        return getOfflineAssistantChat(stationId, query);
+        const u = answerHeatSafetyQuery(query, stationId);
+        return {
+          query,
+          answer: u.markdown,
+          risk_tier: u.tier,
+          action_suggestion: u.actionSuggestion
+        };
       }
       return await fetchJson<AssistantChatResponse>(`${API_BASE}/safety/assistant-chat`, {
         method: 'POST',
@@ -794,7 +800,13 @@ export const api = {
         body: JSON.stringify({ station_id: stationId, query })
       });
     } catch {
-      return getOfflineAssistantChat(stationId, query);
+      const u = answerHeatSafetyQuery(query, stationId);
+      return {
+        query,
+        answer: u.markdown,
+        risk_tier: u.tier,
+        action_suggestion: u.actionSuggestion
+      };
     }
   },
 

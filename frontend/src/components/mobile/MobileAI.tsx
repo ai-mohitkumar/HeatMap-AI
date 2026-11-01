@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Sparkles, User, RotateCcw, PhoneCall } from 'lucide-react';
 import { api } from '../../services/api';
 import { initiatePhoneCall, initiateEmergencySms } from '../../utils/phoneCall';
+import { answerHeatSafetyQuery } from '../../utils/universalAIEngine';
 import type { AIAnalystResponse } from '../../types';
 
 interface MobileAIProps {
@@ -33,19 +34,20 @@ export const MobileAI: React.FC<MobileAIProps> = ({
   peakWindow = '12:30 PM – 3:30 PM'
 }) => {
   const quickPrompts = [
-    '🚨 Heat Stroke Symptoms & Helpline',
-    '💧 ORS Recipe & Hydration Plan',
-    '👶 Kids & Elderly Safety Rules',
-    '👕 What clothing to wear?',
-    '🏃 Safe travel & workout hours',
-    '🔬 What is wet-bulb temperature?'
+    '📍 How hot is Jaipur right now?',
+    '⚖️ Delhi vs Mumbai comparison',
+    '🚨 Heat Stroke Symptoms & Helpline 108',
+    '💧 ORS Recipe & Traditional Drinks',
+    '👶 Kids & Pregnant Women Safety',
+    '👕 Work & Outdoor Labor Guidelines',
+    '🏠 35°C Fan Safety & Home Cooling'
   ];
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'init',
       sender: 'assistant',
-      text: `Hello! I am your HeatShield AI Safety Assistant. In ${locationName}, current ambient temperature is ${tempC.toFixed(1)}°C (feels like ${feelsLikeC.toFixed(1)}°C) with ${riskLevel} heat risk. Peak radiant stress is between ${peakWindow}. How can I assist your health and safety today?`,
+      text: `Hello! I am your HeatShield AI Safety Assistant. In ${locationName}, current ambient temperature is ${tempC.toFixed(1)}°C (feels like ${feelsLikeC.toFixed(1)}°C, ${humidityPct}% humidity) with ${riskLevel} heat risk. Peak radiant stress is between ${peakWindow}. How can I assist your health and safety today?`,
       timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
     }
   ]);
@@ -58,7 +60,7 @@ export const MobileAI: React.FC<MobileAIProps> = ({
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isThinking]);
 
-  // Comprehensive Offline Knowledge Engine (Runs if offline or backend is delayed)
+  // Universal Knowledge Engine (Evaluates any Indian location, comparison, and safety domain)
   const generateOfflineResponse = (userPrompt: string): {
     headline: string;
     text: string;
@@ -66,138 +68,35 @@ export const MobileAI: React.FC<MobileAIProps> = ({
     directives: string[];
     isEmergency: boolean;
   } => {
+    const res = answerHeatSafetyQuery(userPrompt, {
+      name: locationName,
+      lat: 28.58,
+      lon: 77.20,
+      tempC,
+      feelsLikeC,
+      humidity: humidityPct,
+      riskTier: riskLevel
+    });
     const q = userPrompt.toLowerCase();
-    const isElevated = riskLevel.toLowerCase() === 'high' || riskLevel.toLowerCase() === 'extreme';
+    const isEmerg =
+      q.includes('108') ||
+      q.includes('112') ||
+      q.includes('emergency') ||
+      q.includes('stroke') ||
+      q.includes('faint') ||
+      q.includes('unconscious') ||
+      q.includes('ambulance');
 
-    // 1. Emergency & Medical Triage
-    if (
-      q.includes('emergency') || q.includes('108') || q.includes('112') || q.includes('stroke') ||
-      q.includes('hospital') || q.includes('faint') || q.includes('unconscious') || q.includes('first aid') ||
-      q.includes('ambulance') || q.includes('symptom')
-    ) {
-      return {
-        headline: '🚨 Emergency Helplines & Heat Illness Triage',
-        category: 'emergency_medical_triage',
-        isEmergency: true,
-        text: `CRITICAL TRIAGE PROTOCOL:
-• Heat Stroke (>40°C core temp, confusion, loss of consciousness): LIFE-THREATENING. Dial 108 / 112 immediately. Move to shade, apply ice packs to neck, armpits, and groin. DO NOT give oral fluids if unconscious.
-• Heat Exhaustion (Heavy sweating, dizziness, nausea, pale skin): Move to air conditioning, elevate legs 12 inches, and sip 500ml cold ORS water over 30 minutes.`,
-        directives: [
-          'Call 108 for emergency ambulance dispatch or 112 for national emergency coordination.',
-          'Active cooling must begin immediately on site before the ambulance arrives.',
-          'Do NOT administer fever medications (paracetamol/aspirin) for heat stroke.'
-        ]
-      };
-    }
-
-    // 2. Hydration & ORS
-    if (q.includes('hydration') || q.includes('water') || q.includes('drink') || q.includes('ors') || q.includes('electrolyte')) {
-      return {
-        headline: '💧 Scientific Hydration & Homemade ORS Protocol',
-        category: 'hydration_nutrition',
-        isEmergency: false,
-        text: `Under current ${humidityPct}% humidity and ${tempC.toFixed(1)}°C heat index, your sweat rate is ~0.8 to 1.2 L/hr. Drink 250ml every 20 minutes outdoors.
-
-HOMEMADE ORS RECIPE:
-• 1 Liter clean drinking water
-• 6 level teaspoons sugar
-• 1/2 level teaspoon table salt
-Stir until dissolved. Avoid alcohol, dark tea, and sugary sodas which worsen dehydration.`,
-        directives: [
-          'Pre-hydrate with 500ml of fluids 1 hour before scheduled travel.',
-          'Carry an insulated bottle with electrolytes or coconut water.',
-          'Eat water-dense fruits like watermelon, cucumber, and oranges.'
-        ]
-      };
-    }
-
-    // 3. Vulnerable Demographics (Elderly, Kids, Pets, Laborers)
-    if (q.includes('child') || q.includes('kid') || q.includes('baby') || q.includes('elderly') || q.includes('senior') || q.includes('pet') || q.includes('dog') || q.includes('worker')) {
-      return {
-        headline: '🛡️ Vulnerable Demographics Thermal Protection',
-        category: 'vulnerable_populations',
-        isEmergency: false,
-        text: `• CHILDREN & INFANTS: Absorb heat 33% faster than adults and sweat less. NEVER leave a child in a parked car under any circumstances.
-• ELDERLY (65+): Impaired thirst sensation and reduced cardiovascular vasodilation. Perform twice-daily check-ins and ensure fan/AC airflow.
-• OUTDOOR WORKERS: Mandatory 15-minute shaded rest breaks every 45 minutes of heavy labor.
-• DOMESTIC PETS: Dogs pant to cool off; hot asphalt burns paws. Walk pets only before 7:00 AM.`,
-        directives: [
-          'Establish a buddy check-in system for elderly family members twice daily.',
-          'Keep children indoors in ventilated areas between 11:30 AM and 4:30 PM.',
-          'Provide shaded water bowls for domestic animals and neighborhood birds.'
-        ]
-      };
-    }
-
-    // 4. Outdoor Activity, Clothing & Travel
-    if (q.includes('wear') || q.includes('cloth') || q.includes('clothing') || q.includes('travel') || q.includes('bike') || q.includes('outside') || q.includes('exercise') || q.includes('run')) {
-      return {
-        headline: '🏃 Outdoor Activity & Protective Attire Guidelines',
-        category: 'outdoor_activity_guidelines',
-        isEmergency: false,
-        text: isElevated
-          ? `STRICT CAUTION: Peak radiant risk window in ${locationName} is between ${peakWindow}.
-• Wear loose, light-colored 100% cotton garments to reflect sunlight and facilitate sweat evaporation.
-• Wear a wide-brimmed hat, UV400 sunglasses, and apply SPF 50+ sunscreen.
-• Two-wheelers: Wear a breathable cotton neck scarf and keep helmet visor cracked for ventilation.`
-          : `MODERATE CONDITIONS: Morning hours (before 9:00 AM) and evening (after 5:30 PM) are optimal for outdoor workouts and errands.`,
-        directives: [
-          'Reschedule strenuous outdoor cardio to 05:30 AM – 07:30 AM.',
-          'Stay in shaded tree corridors and avoid open asphalt transit.',
-          'Carry a wet towel to drape around the neck during transit.'
-        ]
-      };
-    }
-
-    // 5. Indoor Cooling, AC & Fan Safety
-    if (q.includes('ac') || q.includes('fan') || q.includes('cooler') || q.includes('sleep') || q.includes('night') || q.includes('room')) {
-      return {
-        headline: '🏠 Indoor Cooling Strategies & Fan Safety Threshold',
-        category: 'indoor_cooling_safety',
-        isEmergency: false,
-        text: `CRITICAL FAN SAFETY THRESHOLD:
-When room temperatures exceed 35°C, electric fans DO NOT cool you — they blow hot air like a convection oven, accelerating dehydration. Dampen your skin or wear a wet cotton shirt in front of the fan.
-
-Optimal AC setting: 24°C–26°C with 'Dry' mode during humid monsoon days. Open windows for cross-ventilation only after outdoor air cools down (typically after 8:30 PM).`,
-        directives: [
-          'Set AC to 25°C to optimize compressor load and humidity control.',
-          'Hang damp bamboo mats or curtains on west-facing windows to block radiant heat.',
-          'Cool roofs with reflective white lime wash reduce ceiling temperatures by 15°C.'
-        ]
-      };
-    }
-
-    // 6. Meteorological & Wet-Bulb Concepts
-    if (q.includes('wet bulb') || q.includes('dew point') || q.includes('idw') || q.includes('noaa') || q.includes('cluster') || q.includes('science')) {
-      return {
-        headline: '🔬 Biometeorological Science & Continuous IDW',
-        category: 'meteorological_science',
-        isEmergency: false,
-        text: `Wet-bulb temperature represents the lowest temperature achievable by evaporative sweat cooling. When wet-bulb exceeds 31°C (and approaches 35°C), metabolic heat cannot dissipate from the human body even if you drink gallons of water.
-
-HeatShield AI uses continuous Inverse Distance Weighting (k=4, p=2.0) across 46 synoptic stations to calculate your exact hyper-local heat stress index rather than crude city averages.`,
-        directives: [
-          'Monitor humidity levels: high humidity makes 38°C more hazardous than 45°C dry heat.',
-          'Explore the Map tab to view continuous IDW contours and synoptic stations.',
-          'Check the Research Hub in the More drawer to inspect mathematical proofs (RQ1–RQ6).'
-        ]
-      };
-    }
-
-    // 7. General Location Synthesis
     return {
-      headline: `HeatShield AI Telemetry Brief for ${locationName}`,
-      category: 'general_inquiry',
-      isEmergency: false,
-      text: `Based on live NOAA GSOD continuous IDW models in ${locationName}:
-Current ambient temperature is ${tempC.toFixed(1)}°C (feels like ${feelsLikeC.toFixed(1)}°C) with ${humidityPct}% relative humidity. The prevailing risk tier is ${riskLevel}.
-
-During the peak radiant stress window (${peakWindow}), avoid direct unshaded transit, hydrate regularly with electrolytes, and check on vulnerable dependents.`,
+      headline: res.title,
+      text: res.markdown,
+      category: res.category,
       directives: [
-        'Sip 250ml electrolyte water every 20 minutes.',
-        'Review the Alerts tab for official NDMA meteorological warnings.',
-        'For urgent medical distress or heat stroke, call 108 immediately.'
-      ]
+        res.actionSuggestion,
+        'Maintain continuous hydration with ORS, Sattu, Chaas, or water.',
+        'Follow local NDMA heat advisories and stay out of direct midday sun.'
+      ],
+      isEmergency: isEmerg
     };
   };
 
@@ -439,7 +338,7 @@ During the peak radiant stress window (${peakWindow}), avoid direct unshaded tra
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask anything about symptoms, hydration, outdoor safety, or telemetry..."
+          placeholder="Ask any question for any city, village, or state..."
           className="flex-1 bg-[#14203D] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500"
         />
         <button

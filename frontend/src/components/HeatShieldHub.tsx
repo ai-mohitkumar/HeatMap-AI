@@ -32,6 +32,7 @@ import { HourlyForecastStrip } from './HourlyForecastStrip';
 import { getTranslation } from '../utils/localization';
 import { api } from '../services/api';
 import { initiatePhoneCall } from '../utils/phoneCall';
+import { answerHeatSafetyQuery } from '../utils/universalAIEngine';
 
 interface HeatShieldHubProps {
   onNavigateTab?: (tab: string) => void;
@@ -256,7 +257,7 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
     }
   };
 
-  // Handle AI Chip & Freeform Queries with local risk context
+  // Handle Universal AI Queries for ANY question and ANY location
   const handleChipQuery = (query: string) => {
     setChatInput(query);
     setIsChatThinking(true);
@@ -264,63 +265,23 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
 
     setTimeout(() => {
       setIsChatThinking(false);
-      const hour = currentTime.getHours();
-      const isPeak = hour >= 11 && hour <= 16;
-      const q = query.toLowerCase();
-
-      if (q.includes('safe to go out') || q.includes('outdoor')) {
-        if (isPeak && heatIndexC >= 42) {
-          setChatResponse(
-            `🚨 CRITICAL PEAK DANGER in ${locationName}: Current Heat Index is ${heatIndexC}°C (Ambient ${tempC}°C) under high solar radiation. Direct sun exposure will rapidly trigger thermal exhaustion. All manual labor or non-essential outdoor trips should be HALTED until after 5:00 PM.`
-          );
-        } else if (heatIndexC >= 40) {
-          setChatResponse(
-            `⚠️ HIGH THERMAL STRESS: Heat Index is ${heatIndexC}°C in ${locationName}. If you must venture outdoors, limit exposure to <20 minutes, wear a broad-brimmed hat, carry oral rehydration fluids, and stay strictly in tree or building shade.`
-          );
-        } else if (heatIndexC >= 35) {
-          setChatResponse(
-            `⚡ MODERATE HEAT LOAD: Heat Index is ${heatIndexC}°C in ${locationName}. Safe for light walking and travel, provided you consume 250 ml of water every 30 minutes and avoid direct sun during 12 PM – 3 PM.`
-          );
-        } else {
-          setChatResponse(
-            `✅ SAFE OUTDOOR CONDITIONS: Ambient temperature is ${tempC}°C with Heat Index ${heatIndexC}°C in ${locationName}. Standard seasonal baseline. Maintain regular hydration and sun protection.`
-          );
-        }
-      } else if (q.includes('dizzy') || q.includes('faint') || q.includes('headache') || q.includes('vomit') || q.includes('symptom')) {
-        setChatResponse(
-          `🚨 URGENT CLINICAL ALERT: Dizziness, confusion, headache, or nausea during ${heatIndexC}°C thermal stress are warning signs of heat exhaustion or impending heatstroke! Relocate immediately to an air-conditioned room or deep shade, place cold wet cloths on your neck, armpits and groin, sip electrolyte water, and call 108 if symptoms worsen.`
-        );
-      } else if (q.includes('worker') || q.includes('labor') || q.includes('rest') || q.includes('shift')) {
-        const restRatio = heatIndexC >= 45 ? '15 min work / 45 min shade rest per hour' : heatIndexC >= 40 ? '30 min work / 30 min shade rest per hour' : '45 min work / 15 min rest per hour';
-        setChatResponse(
-          `👷 OSHA/NIOSH WORKER PROTOCOL for ${locationName}: At Heat Index ${heatIndexC}°C, mandatory rest cycle is: **${restRatio}**. Employers must provide continuous chilled drinking water (at least 1 liter per worker/hour) and shaded recovery stations.`
-        );
-      } else if (q.includes('hydration') || q.includes('water') || q.includes('drink')) {
-        const mlPerHour = heatIndexC >= 42 ? 600 : heatIndexC >= 38 ? 450 : 300;
-        setChatResponse(
-          `💧 PERSONAL HYDRATION PLAN for ${locationName}: With current thermal stress at ${heatIndexC}°C and humidity at ${humidity}%, your body loses fluid rapidly. Target intake: **${mlPerHour} ml per hour**. Add a pinch of salt or ORS packet to replace lost sodium. Avoid carbonated/sugary sodas.`
-        );
-      } else if (q.includes('humidity') || q.includes('moisture') || q.includes('sweat')) {
-        setChatResponse(
-          `🌊 MOISTURE COUPLING ANALYSIS: Relative humidity in ${locationName} is ${humidity}%. Elevated humidity saturates the boundary layer air, preventing sweat from evaporating. Even if dry-bulb is ${tempC}°C, your internal physiological stress corresponds to ${feelsLikeC}°C.`
-        );
-      } else if (q.includes('indoor') || q.includes('activities')) {
-        setChatResponse(
-          `🏠 RECOMMENDED INDOOR SAFETY: Current Heat Index is ${heatIndexC}°C. Keep curtains and drapes drawn against solar radiation. Position ceiling fans or air coolers in cross-ventilated rooms. Ideal for desk work, light indoor stretching, and study.`
-        );
-      } else if (q.includes('heatwave')) {
-        const isHeatwave = tempC >= 40.0 || feelsLikeC >= 43.0;
-        setChatResponse(
-          isHeatwave
-            ? `🔥 METEOROLOGICAL HEATWAVE ACTIVE in ${locationName}: Surface observations indicate extreme thermal anomalies (+3.2°C over seasonal norm) with Heat Index ${heatIndexC}°C. Vulnerable residents (elderly, infants, pregnant individuals) must stay in cooled areas.`
-            : `ℹ️ SEASONAL BASELINE: Temperatures in ${locationName} (${tempC}°C) are within standard historical variations. No official heatwave declared today.`
-        );
-      } else {
-        setChatResponse(
-          `Biometeorological synthesis for ${locationName}: Ambient ${tempC}°C, Relative Humidity ${humidity}%, Heat Index ${heatIndexC}°C (${riskLevel} Risk). Wind convective cooling: ${windKmh} km/h. Next peak danger period is 11:30 AM – 4:00 PM.`
-        );
+      try {
+        const res = answerHeatSafetyQuery(query, {
+          name: locationName,
+          lat: currentLat,
+          lon: currentLon,
+          tempC,
+          feelsLikeC,
+          humidity,
+          windKmh,
+          riskTier: riskLevel
+        });
+        setChatResponse(res.answer);
+      } catch (err) {
+        console.error('Universal AI query error:', err);
+        setChatResponse(`Analysis for ${locationName}: Ambient ${tempC}°C, Heat Index ${feelsLikeC}°C (${riskLevel} Risk). Maintain continuous hydration and avoid direct midday solar exposure.`);
       }
-    }, 350);
+    }, 250);
   };
 
   const handleSendChat = (e: React.FormEvent) => {
@@ -1028,8 +989,8 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask advice for your city..."
-                className="w-full bg-[#0B132B] border border-slate-700/80 rounded-xl pl-3 pr-9 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition"
+                placeholder="Ask any question for any city, village, or state..."
+                className="w-full bg-[#0B132B] border border-slate-700/80 rounded-xl pl-3 pr-9 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition shadow-inner"
               />
               <button
                 type="submit"
@@ -1040,26 +1001,21 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               </button>
             </form>
 
-            {/* Dynamic Quick Prompt Chips grounded in current risk level */}
-            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-              {(riskLevel === 'Extreme' || riskLevel === 'Very High'
-                ? [
-                    'Is it safe to go out now?',
-                    'Heat stroke symptoms',
-                    'Worker rest schedule',
-                    'Hydration formula',
-                  ]
-                : [
-                    'Is it safe to go out now?',
-                    'Hydration formula',
-                    'Moisture trap analysis',
-                    'Is this a heatwave?',
-                  ]
-              ).map((chip, idx) => (
+            {/* Dynamic Quick Prompt Chips (Demonstrates Universal Scope & Locations) */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px]">
+              {[
+                'How hot is Jaipur today?',
+                'Can I play cricket at 2 PM?',
+                'Baby stroller precautions',
+                'Worker rest schedule',
+                'Traditional cooling drinks',
+                'Compare Delhi vs Mumbai',
+              ].map((chip, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleChipQuery(chip)}
-                  className="p-1.5 text-left bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 rounded-lg transition border border-slate-700/60 leading-tight"
+                  className="p-1.5 text-left bg-slate-800/80 hover:bg-slate-700/90 text-slate-300 rounded-lg transition border border-slate-700/60 leading-tight truncate hover:text-white"
+                  title={chip}
                 >
                   {chip}
                 </button>
@@ -1068,17 +1024,28 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
 
             {/* Inline AI Response Bubble */}
             {isChatThinking && (
-              <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-800/60 text-xs text-blue-300 flex items-center gap-2">
+              <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-800/60 text-xs text-blue-300 flex items-center gap-2 animate-pulse">
                 <Sparkles className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-                <span>Analyzing biometeorological conditions for {locationName}...</span>
+                <span>Resolving location & analyzing biometeorology...</span>
               </div>
             )}
             {chatResponse && !isChatThinking && (
-              <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-800/60 text-xs text-slate-200 leading-relaxed space-y-1">
-                <div className="flex items-center gap-1 text-cyan-400 text-[10px] font-semibold">
-                  <Bot className="w-3 h-3" /> HeatShield Advisory:
+              <div className="p-3 rounded-xl bg-blue-950/50 border border-blue-800/70 text-xs text-slate-200 leading-relaxed space-y-2 max-h-72 overflow-y-auto shadow-inner">
+                <div className="flex items-center justify-between text-cyan-400 text-[10px] font-semibold border-b border-blue-900/60 pb-1">
+                  <span className="flex items-center gap-1 font-bold">
+                    <Bot className="w-3.5 h-3.5 text-cyan-400" />
+                    HeatShield Universal Advisory
+                  </span>
+                  <button
+                    onClick={() => setChatResponse(null)}
+                    className="text-slate-400 hover:text-slate-200 text-[9px] uppercase tracking-wider font-semibold"
+                  >
+                    Clear
+                  </button>
                 </div>
-                <p>{chatResponse}</p>
+                <div className="whitespace-pre-line text-xs leading-relaxed text-slate-200">
+                  {chatResponse}
+                </div>
               </div>
             )}
           </div>

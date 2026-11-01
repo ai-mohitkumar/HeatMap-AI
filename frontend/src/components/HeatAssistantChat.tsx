@@ -32,10 +32,14 @@ interface ChatMessage {
 }
 
 const PRESET_QUESTIONS = [
+  'How hot is Jaipur right now?',
+  'Is Delhi hotter than Mumbai today?',
   'Can I play cricket at 2 PM today?',
-  'I have a 4-hour outdoor construction shift today.',
-  'How to sleep comfortably tonight without high AC bills?',
-  'I feel dizzy after walking outside in the sun.'
+  'Can a pregnant woman take a walk at 2 PM?',
+  'Worker safety guidelines for 42°C construction shift',
+  'Best traditional Indian cooling drinks for dehydration',
+  'Heat exhaustion vs heat stroke emergency signs',
+  'How to sleep comfortably tonight without high AC bills?'
 ];
 
 export const HeatAssistantChat: React.FC<HeatAssistantChatProps> = ({
@@ -47,7 +51,7 @@ export const HeatAssistantChat: React.FC<HeatAssistantChatProps> = ({
     {
       id: 'init-1',
       sender: 'assistant',
-      text: `Hello! I am your HeatShield AI Assistant. I analyze real-time biometeorological data for ${stationName} to give you personalized, life-saving advice on outdoor activities, hydration, and heat hazards. How can I help you stay safe today?`,
+      text: `Hello! I am your HeatShield Universal AI Assistant. I analyze real-time biometeorological data across all 46 NOAA synoptic stations, 787 districts, 36 states, and ~650,000 villages across India.\n\nAsk me ANY question about outdoor sports, construction labor, pregnancy/infant precautions, ORS recipes, indoor cooling, or compare any two locations (e.g., 'Delhi vs Mumbai')!`,
       timestamp: 'Just now'
     }
   ]);
@@ -107,13 +111,13 @@ export const HeatAssistantChat: React.FC<HeatAssistantChatProps> = ({
             {getTranslation(lang, 'ai_assistant', 'Grounded AI Heat Assistant')}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            Ask any question about outdoor activities, workouts, work safety, or cooling methods.
+            Ask ANY question about sports, work safety, infants, pregnancy, cooling drinks, symptoms, or compare any locations across India.
           </p>
         </div>
 
         <div className="flex items-center gap-2 bg-gray-800 px-3.5 py-2 rounded-xl border border-gray-700 text-xs text-gray-300 self-start sm:self-center">
           <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Grounded in: <strong className="text-white">{stationName}</strong></span>
+          <span>Active Base: <strong className="text-white">{stationName}</strong> <span className="text-gray-500">(or mention any city/state)</span></span>
         </div>
       </div>
 
@@ -204,7 +208,7 @@ export const HeatAssistantChat: React.FC<HeatAssistantChatProps> = ({
               </div>
               <div className="bg-gray-800/90 rounded-2xl px-4 py-3 border border-gray-700/60 flex items-center gap-2 text-xs text-gray-400">
                 <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>
-                <span>Analyzing biometeorological conditions for {stationName}...</span>
+                <span>Synthesizing biometeorological data across India...</span>
               </div>
             </div>
           )}
@@ -223,7 +227,7 @@ export const HeatAssistantChat: React.FC<HeatAssistantChatProps> = ({
               type="text"
               value={inputQuery}
               onChange={(e) => setInputQuery(e.target.value)}
-              placeholder={`Ask about running, cricket, night heat, or work in ${stationName}...`}
+              placeholder="Ask any question for any city, village, or state (e.g. 'Jaipur weather', 'Delhi vs Mumbai', 'baby safety')..."
               disabled={loading}
               className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 placeholder-gray-500"
             />

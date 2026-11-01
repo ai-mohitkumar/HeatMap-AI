@@ -175,7 +175,7 @@ def assistant_chat(payload: AssistantChatRequest):
     match = df[df["STATION"].astype(str) == str(payload.station_id)]
     station_rec = match.iloc[-1].to_dict() if len(match) > 0 else df.iloc[0].to_dict()
 
-    return HeatSafetyEngine.query_heat_assistant(payload.query, station_rec)
+    return HeatSafetyEngine.query_heat_assistant(payload.query, station_rec, df)
 
 @router.get("/localization", response_model=Dict[str, Any])
 def get_localization():

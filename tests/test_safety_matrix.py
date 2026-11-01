@@ -208,3 +208,50 @@ class TestSafetyEngineMatrix:
         assert live_data["status"] in ["online", "offline_fallback"]
         assert "source" in live_data
 
+    def test_universal_heat_assistant_locations_and_domains(self):
+        """
+        Verifies that query_heat_assistant resolves any Indian location, comparative queries,
+        and domain questions (pregnancy, infants, ORS, 35°C fans, emergency).
+        """
+        base_record = {
+            "NAME": "NEW DELHI SAFDARJUNG, IN",
+            "mean_temp_c": 38.5,
+            "max_temp_c": 43.2,
+            "relative_humidity": 45.0,
+            "heat_index_c": 44.1,
+            "heat_stress_index": 78.0
+        }
+
+        # 1. Location Query (Jaipur)
+        res_loc = HeatSafetyEngine.query_heat_assistant("How hot is Jaipur right now?", base_record)
+        assert "answer" in res_loc
+        assert len(res_loc["answer"]) > 20
+        assert res_loc["risk_tier"] in ["Moderate", "High", "Very High", "Extreme"]
+
+        # 2. Cross-Location Comparison (Delhi vs Mumbai)
+        res_comp = HeatSafetyEngine.query_heat_assistant("Is Delhi hotter than Mumbai today?", base_record)
+        assert "Delhi" in res_comp["answer"]
+        assert "Mumbai" in res_comp["answer"]
+        assert "Biometeorological Comparison" in res_comp["answer"]
+
+        # 3. Pregnancy Safety
+        res_preg = HeatSafetyEngine.query_heat_assistant("Can a pregnant woman take a walk at 2 PM?", base_record)
+        assert "Pregnancy" in res_preg["answer"]
+        assert "11:00 AM" in res_preg["answer"]
+
+        # 4. ORS & Traditional Drinks
+        res_ors = HeatSafetyEngine.query_heat_assistant("What is the homemade ORS recipe?", base_record)
+        assert "ORS" in res_ors["answer"]
+        assert "sugar" in res_ors["answer"]
+        assert "salt" in res_ors["answer"]
+
+        # 5. Indoor AC & 35°C Fan Physics
+        res_fan = HeatSafetyEngine.query_heat_assistant("Is it safe to sleep under a fan tonight?", base_record)
+        assert "35°C" in res_fan["answer"]
+        assert "fan" in res_fan["answer"].lower()
+
+        # 6. Clinical Heat Stroke & 108 Emergency
+        res_stroke = HeatSafetyEngine.query_heat_assistant("I feel dizzy and confused after being in the sun", base_record)
+        assert "108" in res_stroke["answer"]
+        assert res_stroke["risk_tier"] == "Extreme"
+

@@ -35,6 +35,7 @@ import {
   Cpu
 } from 'lucide-react';
 import { evaluateLocationHeat } from '../utils/indiaGeoStore';
+import { answerHeatSafetyQuery } from '../utils/universalAIEngine';
 import type { LocationPredictionResponse } from '../types';
 
 interface DeviceShowcaseViewProps {
@@ -272,19 +273,9 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
     setAssistantInput('');
 
     setTimeout(() => {
-      let reply = `Based on current thermal assessment in ${activeGeo.name} (${currentTemp}°C, feels like ${currentFeels}°C with ${currentHumidity}% humidity), `;
-      const lower = userMsg.toLowerCase();
-      if (lower.includes('run') || lower.includes('jog') || lower.includes('exercise')) {
-        reply += 'the optimal outdoor workout window is early morning between 05:30 AM and 07:30 AM. Strictly avoid 11:30 AM to 04:30 PM.';
-      } else if (lower.includes('water') || lower.includes('hydrate')) {
-        reply += `your sweat rate is currently elevated (~850 ml/hr). We recommend drinking 250ml of electrolyte-fortified water every 20-25 minutes.`;
-      } else if (lower.includes('worker') || lower.includes('labor') || lower.includes('shift')) {
-        reply += `under NIOSH guidelines for ${riskLevel} heat risk, outdoor workers must adhere to a 30-minute rest per 30-minute work cycle under ventilated shade.`;
-      } else {
-        reply += `you are currently in a ${riskLevel} heat regime. Ensure vulnerable family members stay indoors, hydrate frequently, and reapply SPF 50+ sunscreen if outdoors.`;
-      }
-      setAssistantChat(prev => [...prev, { sender: 'ai', text: reply }]);
-    }, 450);
+      const res = answerHeatSafetyQuery(userMsg, activeGeo.name);
+      setAssistantChat(prev => [...prev, { sender: 'ai', text: res.markdown }]);
+    }, 350);
   };
 
   const handleCopyHash = (hash: string) => {

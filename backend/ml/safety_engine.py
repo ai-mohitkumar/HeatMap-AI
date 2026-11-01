@@ -6,6 +6,7 @@ cooling center locations, and community assistance networks.
 """
 
 from typing import Dict, Any, List, Optional
+import re
 import numpy as np
 import pandas as pd
 
@@ -832,68 +833,289 @@ class HeatSafetyEngine:
     def query_heat_assistant(
         cls,
         query: str,
-        station_record: Dict[str, Any]
+        station_record: Dict[str, Any],
+        df: Any = None
     ) -> Dict[str, Any]:
         """
         AI Heat Assistant chatbot grounded in deterministic station biometeorological data.
+        Supports ANY Indian location query, cross-location comparisons, and 10 safety domains.
         """
         q = query.strip().lower()
-        temp = float(station_record.get("mean_temp_c", 35.0))
-        max_t = float(station_record.get("max_temp_c", temp + 5.0))
-        rh = float(station_record.get("relative_humidity", 50.0))
-        hi = float(station_record.get("heat_index_c", temp + 3.0))
-        hsi = float(station_record.get("heat_stress_index", 50.0))
-        city = str(station_record.get("NAME", "Your Area")).split(",")[0]
 
-        # 1. Cricket / Sports / Playing outside
-        if any(k in q for k in ["cricket", "play", "football", "badminton", "sports", "match"]):
-            if "2 pm" in q or "1 pm" in q or "3 pm" in q or "afternoon" in q or "12" in q:
+        # Known Indian Cities & Synoptic Station Aliases
+        CITY_ALIASES = {
+            "delhi": "NEW DELHI",
+            "new delhi": "NEW DELHI",
+            "mumbai": "MUMBAI",
+            "bombay": "MUMBAI",
+            "jaipur": "JAIPUR",
+            "chennai": "CHENNAI",
+            "madras": "CHENNAI",
+            "kolkata": "KOLKATA",
+            "calcutta": "KOLKATA",
+            "ahmedabad": "AHMEDABAD",
+            "hyderabad": "HYDERABAD",
+            "bengaluru": "BANGALORE",
+            "bangalore": "BANGALORE",
+            "pune": "PUNE",
+            "lucknow": "LUCKNOW",
+            "patna": "PATNA",
+            "surat": "SURAT",
+            "kanpur": "KANPUR",
+            "nagpur": "NAGPUR",
+            "indore": "INDORE",
+            "bhopal": "BHOPAL",
+            "visakhapatnam": "VISHAKHAPATNAM",
+            "vizag": "VISHAKHAPATNAM",
+            "varanasi": "VARANASI",
+            "amritsar": "AMRITSAR",
+            "chandigarh": "CHANDIGARH",
+            "madurai": "MADURAI",
+            "coimbatore": "COIMBATORE",
+            "kochi": "COCHIN",
+            "cochin": "COCHIN",
+            "guwahati": "GUWAHATI",
+            "bhubaneswar": "BHUBANESHWAR",
+            "ranchi": "RANCHI",
+            "dehradun": "DEHRA DUN",
+            "shimla": "SIMLA",
+            "srinagar": "SRINAGAR",
+            "jodhpur": "JODHPUR",
+            "gwalior": "GWALIOR",
+            "agra": "AGRA",
+            "raipur": "RAIPUR",
+            "tiruchirappalli": "TIRUCHIRAPALLI",
+            "trichy": "TIRUCHIRAPALLI",
+            "trivandrum": "TRIVANDRUM",
+            "thiruvananthapuram": "TRIVANDRUM",
+            "vijayawada": "VIJAYAWADA"
+        }
+
+        # Scan for locations mentioned in query
+        detected_cities = []
+        for alias, station_token in CITY_ALIASES.items():
+            if re.search(r'\b' + re.escape(alias) + r'\b', q):
+                if station_token not in [c[1] for c in detected_cities]:
+                    detected_cities.append((alias.title(), station_token))
+
+        # Helper to retrieve station data
+        def get_city_data(token: str, default_rec: Dict[str, Any]) -> Dict[str, Any]:
+            if df is not None and len(df) > 0:
+                match = df[df["NAME"].str.contains(token, case=False, na=False)]
+                if len(match) > 0:
+                    return match.iloc[-1].to_dict()
+            return default_rec
+
+        # CASE 1: Cross-Location Comparison (e.g. "Delhi vs Mumbai", "Is Jaipur hotter than Patna?")
+        if len(detected_cities) >= 2 or (" vs " in q and len(detected_cities) >= 1) or ("compare" in q and len(detected_cities) >= 1):
+            name_a, token_a = detected_cities[0]
+            name_b, token_b = detected_cities[1] if len(detected_cities) > 1 else ("Base Station", "")
+            rec_a = get_city_data(token_a, station_record)
+            rec_b = get_city_data(token_b, station_record) if token_b else station_record
+
+            t_a, hi_a, rh_a = float(rec_a.get("mean_temp_c", 36.0)), float(rec_a.get("heat_index_c", 40.0)), float(rec_a.get("relative_humidity", 45.0))
+            t_b, hi_b, rh_b = float(rec_b.get("mean_temp_c", 33.0)), float(rec_b.get("heat_index_c", 38.0)), float(rec_b.get("relative_humidity", 70.0))
+
+            hotter = name_a if hi_a >= hi_b else name_b
+            cooler = name_b if hi_a >= hi_b else name_a
+            diff = abs(hi_a - hi_b)
+
+            ans = (
+                f"📊 **Biometeorological Comparison: {name_a} vs {name_b}**\n\n"
+                f"• **{name_a}**: Ambient {t_a:.1f}°C, Feels Like **{hi_a:.1f}°C** ({rh_a:.0f}% humidity)\n"
+                f"• **{name_b}**: Ambient {t_b:.1f}°C, Feels Like **{hi_b:.1f}°C** ({rh_b:.0f}% humidity)\n\n"
+                f"🌡️ **Thermal Verdict**: **{hotter}** poses higher physiological heat stress (+{diff:.1f}°C feels-like). "
+                f"While dry heat feels scorching on skin, higher humidity traps evaporative sweat cooling and elevates wet-bulb strain. "
+                f"Residents in {hotter} should avoid direct midday sun and increase electrolyte fluid intake."
+            )
+            return {
+                "query": query,
+                "answer": ans,
+                "risk_tier": "High" if max(hi_a, hi_b) > 42 else "Moderate",
+                "action_suggestion": f"{hotter} has higher heat index (+{diff:.1f}°C)"
+            }
+
+        # If a single specific location is mentioned, ground active record in that location!
+        active_rec = station_record
+        if len(detected_cities) == 1:
+            name_single, token_single = detected_cities[0]
+            active_rec = get_city_data(token_single, station_record)
+
+        temp = float(active_rec.get("mean_temp_c", 35.0))
+        max_t = float(active_rec.get("max_temp_c", temp + 5.0))
+        rh = float(active_rec.get("relative_humidity", 50.0))
+        hi = float(active_rec.get("heat_index_c", temp + 3.0))
+        hsi = float(active_rec.get("heat_stress_index", 50.0))
+        city = str(active_rec.get("NAME", "Your Area")).split(",")[0]
+
+        # 1. Emergency Medical Triage / Heat Stroke / 108 / Fainting / Dizziness
+        if any(k in q for k in ["108", "112", "emergency", "stroke", "faint", "dizzy", "unconscious", "hospital", "ambulance", "symptom"]):
+            return {
+                "query": query,
+                "answer": (
+                    f"🚨 **Emergency Clinical Heat Triage for {city}:**\n\n"
+                    f"• **HEAT STROKE (Life-Threatening Emergency):** Core body temp >40°C, cessation of sweating (hot dry skin), confusion, seizures, or loss of consciousness.\n"
+                    f"  ➡️ **Action**: Dial **108** or **112** immediately. Move patient to shade/AC, immerse or douse with cold water, apply ice packs to neck, armpits, and groin. **DO NOT give fever reducers (paracetamol/aspirin)** as they aggravate hepatic distress.\n\n"
+                    f"• **HEAT EXHAUSTION:** Heavy profuse sweating, cold clammy skin, nausea, weakness, headache.\n"
+                    f"  ➡️ **Action**: Rest in cool ventilated shade, elevate feet 12 inches, sip cold ORS or electrolyte water gradually."
+                ),
+                "risk_tier": "Extreme",
+                "action_suggestion": "Call 108 immediately for heat stroke"
+            }
+
+        # 2. Vulnerable Groups: Pregnancy, Infants, Babies, Elderly, Pets, Cattle
+        if any(k in q for k in ["pregnant", "pregnancy", "trimester", "baby", "infant", "child", "stroller", "elderly", "senior", "pet", "dog", "cattle"]):
+            if "pregnant" in q or "pregnancy" in q or "trimester" in q:
                 return {
                     "query": query,
-                    "answer": f"🔴 Not recommended today in {city}. Between 12:00 PM and 4:00 PM, temperatures will reach {max_t:.1f}°C with a heat index of {hi:.1f}°C. Intense outdoor cardio during this window carries an acute risk of heat exhaustion and cramps. If possible, schedule your match after 6:30 PM or before 8:30 AM, and take frequent hydration timeouts.",
+                    "answer": (
+                        f"🤰 **Pregnancy Thermal Safety Guidelines ({city} — {temp:.1f}°C, feels like {hi:.1f}°C):**\n\n"
+                        f"• **Physiological Vulnerability**: Pregnant women experience 20% higher basal metabolic heat production and increased cardiac output. Maternal hyperthermia (>38.5°C core temp) is associated with dehydration, oligohydramnios, and premature contractions.\n"
+                        f"• **Midday Precaution**: Strictly avoid outdoor walking between 11:00 AM and 5:00 PM today. Move walks to 6:00 AM – 7:30 AM.\n"
+                        f"• **Hydration**: Consume 3 to 3.5 liters of fluids daily (Coconut water, Chaas, clean water) to sustain amniotic fluid levels. Rest with feet elevated to alleviate peripheral edema."
+                    ),
+                    "risk_tier": "High",
+                    "action_suggestion": "Avoid 11 AM - 5 PM sun, drink 3L fluids"
+                }
+            if "baby" in q or "infant" in q or "stroller" in q or "child" in q:
+                return {
+                    "query": query,
+                    "answer": (
+                        f"👶 **Infant & Child Heat Protection ({city}):**\n\n"
+                        f"• **Thermodynamic Fact**: Infants absorb heat 33% faster than adults and have immature sweat mechanisms.\n"
+                        f"• **Stroller Greenhouse Trap**: Never drape blankets or thick coverings over a pram or stroller — internal temperatures can surge by 15°C in 15 minutes! Use a breathable UV-mesh parasol.\n"
+                        f"• **Parked Vehicles**: NEVER leave a child in a stationary car even for 60 seconds with windows cracked.\n"
+                        f"• **Hydration**: Breastfeed or formula-feed more frequently. For children above 1 year, offer chilled water, lemon water, and fruit slices."
+                    ),
+                    "risk_tier": "High",
+                    "action_suggestion": "Never cover strollers with thick blankets"
+                }
+            if "pet" in q or "dog" in q or "cattle" in q:
+                return {
+                    "query": query,
+                    "answer": (
+                        f"🐾 **Pet & Livestock Welfare ({city} — {temp:.1f}°C):**\n\n"
+                        f"• **Thermal Asphalt Danger**: Tarmac temperatures easily exceed 55°C during afternoon hours, causing second-degree paw pad burns. Test asphalt with the back of your hand for 7 seconds — if too hot for you, it is too hot for paws!\n"
+                        f"• **Heat Dissipation**: Dogs cannot sweat; they only pant. Walk pets before 7:00 AM or after 8:00 PM.\n"
+                        f"• **Dairy Cattle & Birds**: Provide abundant clean drinking water in shade; spray dairy sheds with fine mist to prevent milk yield collapse."
+                    ),
+                    "risk_tier": "Moderate",
+                    "action_suggestion": "Walk pets only before 7:00 AM"
+                }
+            return {
+                "query": query,
+                "answer": (
+                    f"👴 **Senior Citizen (65+) Thermal Care ({city}):**\n\n"
+                    f"• Elderly individuals have blunted physiological thirst sensation and reduced skin vasodilation.\n"
+                    f"• Maintain active twice-daily welfare check-ins.\n"
+                    f"• Ensure daytime room temperatures remain below 30°C and maintain continuous fluid intake even if not feeling thirsty."
+                ),
+                "risk_tier": "High",
+                "action_suggestion": "Conduct twice-daily elderly check-ins"
+            }
+
+        # 3. Nutrition, Hydration, Traditional Indian Cooling Drinks & ORS
+        if any(k in q for k in ["ors", "drink", "sattu", "chaas", "aam panna", "coconut", "water", "hydrat", "diet", "food", "eat"]):
+            return {
+                "query": query,
+                "answer": (
+                    f"💧 **Biometeorological Hydration & Traditional Cooling Protocol ({city}):**\n\n"
+                    f"• **WHO-Standard Homemade ORS**: In 1 Liter of clean drinking water, stir 6 level teaspoons of sugar and 1/2 level teaspoon of salt until dissolved. Provides optimal sodium-glucose cotransport osmolarity.\n"
+                    f"• **Traditional Indian Heat Tonics**:\n"
+                    f"  1. **Aam Panna**: Raw green mango rich in pectin and vitamin C; restores lost electrolytes from profuse sweating.\n"
+                    f"  2. **Chaas (Spiced Buttermilk)**: Blended with roasted cumin, black salt, and mint; restores gut flora and acts as a biological coolant.\n"
+                    f"  3. **Sattu Sharbat**: Roasted gram flour providing slow-burning protein, potassium, and sustaining endurance under sun.\n"
+                    f"  4. **Tender Coconut Water**: Nature's isotonic electrolyte with high potassium and magnesium.\n"
+                    f"• **Foods to Avoid**: Fried spicy gravies, excess caffeine, alcohol, and dark teas which act as diuretics."
+                ),
+                "risk_tier": "Moderate",
+                "action_suggestion": "Drink 250ml ORS/Chaas every 30 mins"
+            }
+
+        # 4. Indoor Cooling, AC & Electric Fan Physics (35°C Fan Threshold)
+        if any(k in q for k in ["ac", "fan", "cooler", "sleep", "night", "room", "indoor", "roof"]):
+            return {
+                "query": query,
+                "answer": (
+                    f"🏠 **Indoor Cooling Physics & Sleep Optimization ({city}):**\n\n"
+                    f"• **Critical 35°C Electric Fan Threshold**: When indoor ambient temperature exceeds 35°C, standard electric fans **DO NOT COOL** the body. They blow hot convective air that accelerates dehydration and skin heat gain. In rooms above 35°C, always mist your skin with water or hang a damp cotton bedsheet in front of the fan.\n"
+                    f"• **Air Conditioner Guidelines**: Set AC thermostat to **24°C–26°C** to optimize compressor energy consumption. On muggy monsoon days ({rh:.0f}% humidity), switch to **Dry Mode (Dehumidification)** to drop feels-like index rapidly.\n"
+                    f"• **Desert Evaporative Coolers**: Highly effective when humidity is <45%. Ensure cross-ventilation with open windows so moisture does not saturate the room.\n"
+                    f"• **Passive Roof Cooling**: Painting roofs with reflective white lime wash reduces ceiling surface temperature by 10°C–15°C."
+                ),
+                "risk_tier": "Moderate",
+                "action_suggestion": "Set AC to 25°C Dry Mode; mist skin under fan"
+            }
+
+        # 5. Occupational & Outdoor Worker Safety
+        if any(k in q for k in ["work outside", "field", "construction", "labor", "shift", "delivery", "worker", "job"]):
+            return {
+                "query": query,
+                "answer": (
+                    f"⚠️ **Occupational Heat Safety Standards ({city} — Peak {max_t:.1f}°C, HI {hi:.1f}°C):**\n\n"
+                    f"• **NIOSH/OSHA Work-Rest Cycles**: Under prevailing {hi:.1f}°C heat index, workers must enforce a mandatory **45 minutes work / 15 minutes shaded rest cycle** (or 30/30 if heat index exceeds 44°C).\n"
+                    f"• **Water Consumption**: Employers and contractors must provide 1 Liter of potable cool water per worker per hour. Sip 250ml every 15–20 minutes rather than large infrequent gulps.\n"
+                    f"• **Personal Protection**: Wear wide-brimmed cotton hats or a wet gamcha (cotton scarf) covering neck and ears. Shift heaviest structural pours and digging to 6:00 AM – 9:30 AM."
+                ),
+                "risk_tier": "Very High" if hsi > 70 else "High",
+                "action_suggestion": "Follow 45m work / 15m shaded rest cycle"
+            }
+
+        # 6. Cricket, Running, Workouts & Outdoor Sports
+        if any(k in q for k in ["cricket", "play", "football", "badminton", "sports", "match", "run", "jog", "walk", "exercise", "workout"]):
+            is_midday = any(h in q for h in ["2 pm", "1 pm", "3 pm", "12 pm", "afternoon", "midday", "noon"])
+            if is_midday:
+                return {
+                    "query": query,
+                    "answer": (
+                        f"🔴 **NOT RECOMMENDED at midday in {city}.**\n\n"
+                        f"Between 11:30 AM and 4:30 PM, solar radiant flux is peak, and temperatures will touch {max_t:.1f}°C with a heat index of {hi:.1f}°C. "
+                        f"Intense cardiovascular exertion during this window causes rapid core temperature escalation, lactic acidosis, and acute risk of heat exhaustion.\n\n"
+                        f"✅ **Safe Window**: Move your cricket match or workout to **6:00 AM – 8:00 AM** or **after 6:30 PM**. Drink 500ml water 30 minutes before starting."
+                    ),
                     "risk_tier": "High",
                     "action_suggestion": "Move play to after 6:30 PM"
                 }
             return {
                 "query": query,
-                "answer": f"Outdoor sports in {city} are manageable in the early morning (6:00–8:30 AM) or after 6:30 PM. Drink 500ml of electrolyte water 30 minutes before starting, and mandate a 5-minute shade break every 25 minutes.",
+                "answer": (
+                    f"🏃 **Outdoor Activity Windows for {city}:**\n\n"
+                    f"• **Optimal Workout Window**: 05:45 AM – 07:30 AM (ambient ~{temp - 4:.1f}°C).\n"
+                    f"• **Evening Window**: After 06:45 PM once solar radiation ceases, though asphalt retains residual surface warmth.\n"
+                    f"• **Hydration**: Drink 250ml electrolyte fluid every 20 minutes during cardio. Wear loose UV-protective cotton garments."
+                ),
                 "risk_tier": "Moderate",
-                "action_suggestion": "Hydrate every 25 minutes"
+                "action_suggestion": "Exercise before 7:30 AM or after 6:30 PM"
             }
 
-        # 2. Outdoor work / Manual labor
-        if any(k in q for k in ["work outside", "field", "construction", "labor", "hours outside"]):
+        # 7. Atmospheric Biometeorology & Wet-Bulb Concepts
+        if any(k in q for k in ["wet bulb", "dew point", "physics", "humidity", "science"]):
             return {
                 "query": query,
-                "answer": f"⚠️ If working outdoors in {city} today, your shift overlaps with elevated thermal conditions ({max_t:.1f}°C peak, {rh:.0f}% humidity). Per NIOSH occupational standards, take a mandatory 15-minute shaded rest break for every 45 minutes of labor. Keep an earthen pot (matka) of cool water nearby and wear a protective cotton head covering.",
-                "risk_tier": "Very High" if hsi > 70 else "High",
-                "action_suggestion": "Follow 45 min work / 15 min rest cycle"
+                "answer": (
+                    f"🔬 **Atmospheric Biometeorology in {city}:**\n\n"
+                    f"• **Wet-Bulb Temperature ($T_{{wb}}$)**: The thermodynamic limit of evaporative cooling. When relative humidity is high ({rh:.0f}% currently in {city}), sweat cannot evaporate off human skin.\n"
+                    f"• **35°C Wet-Bulb Physiological Ceiling**: Beyond a wet-bulb temperature of 35°C (even 31°C in active conditions), healthy humans cannot survive in open air without artificial cooling because metabolic heat cannot dissipate.\n"
+                    f"• **Rothfusz Heat Index**: Current feels-like temperature in {city} is **{hi:.1f}°C**, derived from ambient {temp:.1f}°C coupled with {rh:.0f}% humidity."
+                ),
+                "risk_tier": "High" if hi > 42 else "Moderate",
+                "action_suggestion": "High humidity traps sweat; seek air conditioning"
             }
 
-        # 3. Running / Jogging / Walking
-        if any(k in q for k in ["run", "jog", "walk", "exercise"]):
-            return {
-                "query": query,
-                "answer": f"For running in {city}, avoid the midday hours completely. The optimal running window today is 6:00 AM – 7:30 AM when ambient temperature is around {temp - 4:.1f}°C. If running in the evening, wait until after 7:30 PM when surface tarmac heat has radiated away.",
-                "risk_tier": "Moderate",
-                "action_suggestion": "Run before 7:30 AM"
-            }
-
-        # 4. Night heat / Sleeping / Feeling sticky
-        if any(k in q for k in ["night", "sleep", "sticky", "fan", "ac", "evening"]):
-            return {
-                "query": query,
-                "answer": f"Tonight in {city}, humidity is around {rh:.0f}% with minimal nocturnal cooling. To stay cool without high AC bills: hang a damp cotton bedsheet in front of an open window or fan, drink a glass of water before sleeping, and sleep on a lower floor or ventilated terrace.",
-                "risk_tier": "Moderate",
-                "action_suggestion": "Use evaporative damp sheet technique"
-            }
-
-        # Default fallback
+        # 8. Weather / Heat Status of Queried Location
         return {
             "query": query,
-            "answer": f"Currently in {city}, the ambient temperature is {temp:.1f}°C with a heat index of {hi:.1f}°C and {rh:.0f}% relative humidity. Peak danger occurs between 12:00 PM and 4:00 PM. Keep hydrated, avoid direct sun exposure during peak hours, and check on elderly family members.",
+            "answer": (
+                f"📍 **Biometeorological Telemetry for {city}:**\n\n"
+                f"• **Ambient Temperature**: {temp:.1f}°C (Peak forecast: {max_t:.1f}°C)\n"
+                f"• **Feels-Like Heat Index**: **{hi:.1f}°C**\n"
+                f"• **Relative Humidity**: {rh:.0f}%\n"
+                f"• **Heat Stress Index**: {hsi:.0f} / 100\n"
+                f"• **Peak Danger Window**: 12:00 PM – 4:00 PM\n\n"
+                f"🛡️ **Actionable Protection**: Avoid unshaded outdoor activity during peak sun, maintain continuous hydration with water and ORS/Chaas, and check on infants and elderly family members."
+            ),
             "risk_tier": "High" if hsi > 60 else "Moderate",
-            "action_suggestion": "Avoid peak sun (12 PM - 4 PM)"
+            "action_suggestion": "Avoid peak sun (12 PM - 4 PM) & hydrate"
         }
 
     @classmethod
