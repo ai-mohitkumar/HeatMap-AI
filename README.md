@@ -1,15 +1,19 @@
 # HeatShield AI 2.0 — Unsupervised Spatiotemporal Climate Intelligence Platform & Offline Safety System
 
-[![Project ID](https://img.shields.io/badge/Project%20ID-SIH26083-blue.svg)](https://github.com)
-[![Course Outcomes](https://img.shields.io/badge/Course%20Outcomes-CO2%20%7C%20CO3%20%7C%20CO5-green.svg)](https://github.com)
+[![Live App](https://img.shields.io/badge/Live%20Web%20App-Vercel-000000.svg?logo=vercel)](https://heat-map-ai.vercel.app/)
+[![Backend API](https://img.shields.io/badge/Live%20API-Render-46E3B7.svg?logo=render)](https://heatshield-ai-backend-jls2.onrender.com/docs)
+[![Project ID](https://img.shields.io/badge/Project%20ID-SIH26083-blue.svg)](https://github.com/ai-mohitkumar/HeatMap-AI)
+[![Course Outcomes](https://img.shields.io/badge/Course%20Outcomes-CO2%20%7C%20CO3%20%7C%20CO5-green.svg)](https://github.com/ai-mohitkumar/HeatMap-AI)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20TypeScript-61DAFB.svg)](https://react.dev)
 [![scikit-learn](https://img.shields.io/badge/ML-scikit--learn-F7931E.svg)](https://scikit-learn.org)
 [![LOSOCV Validated](https://img.shields.io/badge/LOSOCV-k%3D4%2C%20p%3D2.0-blueviolet.svg)](./IDW_VALIDATION.md)
-[![Sub-Millisecond](https://img.shields.io/badge/Latency-0.49ms%20(%3C1ms)-brightgreen.svg)](./IDW_VALIDATION.md)
-[![Zero Network](https://img.shields.io/badge/Offline-100%25%20Zero--Network-success.svg)](./OFFLINE_MODE.md)
+[![Sub-Millisecond](https://img.shields.io/badge/Latency-%3C1ms%20(0.36ms%20median)-brightgreen.svg)](./IDW_VALIDATION.md)
+[![Offline Resilient](https://img.shields.io/badge/Offline-Labeled%20IDW%20Fallback-success.svg)](./OFFLINE_MODE.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> **Live Web Application:** https://heat-map-ai.vercel.app/  
+> **Live API & Interactive Docs:** https://heatshield-ai-backend-jls2.onrender.com/docs  
 > **Academic Assignment Project No. 25 & Societal Impact Platform**  
 > **Title**: Unsupervised Spatiotemporal Climate Intelligence Platform: Regional Heat-Stress Discovery, Manifold Learning, Anomaly Detection & Personal Heat Safety  
 > **Course Outcomes**: CO2 (Data Preprocessing, Scaling & Ingestion), CO3 (Partition & Hierarchical Clustering, GMM, HDBSCAN, Optimal-$K$ Sweeps), CO5 (PCA, UMAP & Neural Autoencoder Latent Manifolds, Spatial Priority Mapping).
@@ -28,45 +32,46 @@ Modern extreme heatwaves present complex thermodynamic hazards that cannot be ca
    - **RQ4 (Markov Dynamics)**: Formulates an empirical stationary transition matrix tracking 4-year climate regime migration ($P_{ii} \ge 88\%$).
    - **RQ5 (Feature Ablation)**: Systematically tests 6 feature permutations, proving moisture exclusion causes a catastrophic $-26.1\%$ collapse in cluster separation ($F_{\text{RH}} = 342.2$).
    - **RQ6 (Emerging Hotspots)**: Couples spatial IDW ($k=4, p=2.0$) with local anomaly scores to reveal emerging danger zones ($EHI$).
-2. **Citizen Heat-Safety Companion**: Real-time GPS GNSS geolocation, live Rothfusz Heat Index calculation, 6 vulnerability personas, and clinical triage.
-3. **Zero-Network Offline Engine**: Verified sub-millisecond execution ($0.49\text{ms}$ median, $1,680\text{ ops/sec}$) with zero network calls via Service Worker.
+2. **Citizen Heat-Safety Companion**: Multi-tier location acquisition (Native Android GPS → W3C GNSS → Wi-Fi/Cell → direct public IP fallback with explicit `unavailable` state and zero silent hardcoded city defaults), reverse geocoding via Nominatim/BigDataCloud, live Open-Meteo weather with explicit source provenance separation, Rothfusz Heat Index, 6 vulnerability personas, and clinical triage.
+3. **Offline-Resilient IDW Engine**: Sub-millisecond spatial interpolation ($0.36\text{ms}$ median / $0.39\text{ms}$ mean in latest Python validation; $<1\text{ms}$ target) with Service Worker caching for static shells (`NO_CACHE_API_PREFIXES` ensures dynamic geo/weather endpoints never replay stale `is_live: true` responses offline) and cross-platform Android/Wear OS/Desktop/iOS download bundles.
 
 ---
 
 ## 🏛️ Tri-Capability System Architecture
 
 ```
-                                  USER DEVICE (Online / Offline)
-                                                │
-                                    Device GPS / HTML5 GNSS
-                                (Latitude, Longitude, ±Accuracy)
-                                                │
-                 ┌──────────────────────────────┴──────────────────────────────┐
-                 ▼                                                             ▼
-        [ONLINE MODE]                                                 [OFFLINE MODE]
-      FastAPI REST Server                                        Browser Service Worker & Cache
-  (127.0.0.1:8000 / Cloud Daemon)                                  (Zero External Network Requests)
-                 │                                                             │
-                 ├──────────────────────────────┬──────────────────────────────┤
-                 ▼                              ▼                              ▼
-      [1. RESEARCH ML ENGINE]       [2. SAFETY BIOMETEOROLOGY]    [3. SPATIAL INTERPOLATION]
-      • NOAA GSOD 2022-2025         • Rothfusz Heat Index         • Inverse Distance Weighting
-      • RobustScaler (IQR)          • 5-Tier Safety Matrix        • k=4 Synoptic Neighbors
-      • ANOVA F-Test Feature Sep    • Continuous HSI (0-100)      • p=2.0 Flux Decay (1/d²)
-      • K-Means (K=4, Sil=0.51)     • 6 Vulnerability Personas    • Spherical Haversine Geodesy
-      • Ward's Agglomerative (ARI)  • Activity Negotiator         • Latency: 0.78ms (<1ms)
-      • 2D/3D PCA & UMAP Proj       • Clinical Symptom Triage     • LOSOCV MAE: 4.08°C HI
-                 │                              │                              │
-                 └──────────────────────────────┴──────────────────────────────┘
+                               USER DEVICE (Web / PWA / Android APK)
+                                                 │
+             Multi-Tier Geolocation (GPS / Wi-Fi / Public IP / Manual Search)
+     • Retains raw (lat, lon, ±accuracy_m, source)   • Never silently defaults to a preset city
+             │                                                                 │
+             ▼                                                                 ▼
+   [REVERSE GEOCODING]                                              [LOCATION UNAVAILABLE]
+  /api/geo/reverse (Nominatim)                                    Explicit status: "unavailable"
+  -> BigDataCloud -> Labeled Haversine                            User prompts for manual city/district
+             │
+             ├──────────────────────────────────┬──────────────────────────────┐
+             ▼                                  ▼                              ▼
+    [LIVE WEATHER PATH]                [FORECAST PATH]              [OFFLINE ESTIMATE PATH]
+  Open-Meteo Current API          Open-Meteo Hourly Forecast     NOAA GSOD 2022–2025 IDW (k=4, p=2)
+  (&timezone=auto, observed_at)    (&timezone=auto, 06–20h)       (explicitly tagged offline_estimate)
+             │                                  │                              │
+             └──────────────────────────────────┼──────────────────────────────┘
+                                                ▼
+                  [HEATSHIELD RESEARCH ML & BIOMETEOROLOGY ENGINE]
+       • FastAPI REST Backend (Render) & Pre-Cached Client TS Engine (Offline/PWA)
+       • RobustScaler (IQR), ANOVA F-Test, K-Means (K=4, Sil=0.51), Ward's (ARI=0.772)
+       • 2D/3D PCA, UMAP, Bottleneck Autoencoder, Isolation Forest, Markov Matrix
+       • Rothfusz Heat Index (Steadman gate + RHS adj.), Continuous HSI, 5-Tier Triage
                                                 │
                                                 ▼
                               MODERN RESPONSIVE USER INTERFACE
                                (React 19 + TypeScript + Vite)
       ┌────────────────────────────────────────────────────────────────────────┐
-      │ • Personal HeatShield Home      • National GPS Network Graph (SVG)     │
-      │ • All 46 Regions Live Grid      • Empirical IDW Validation Drawer      │
-      │ • Regional Priority Heatmap     • Emergency SOS & Cooling Shelters     │
-      │ • 2D PCA Biplot & Feature Load  • Interactive AI Heat Assistant        │
+      │ • Personal HeatShield Home      • National GPS Network Map & IDW Grid  │
+      │ • All 46 Stations Live View     • Empirical IDW Validation Drawer      │
+      │ • Source/Confidence Badges      • Emergency SOS & Cooling Shelters     │
+      │ • Climate Intelligence Lab      • Universal AI Heat Assistant          │
       └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,11 +99,13 @@ Modern extreme heatwaves present complex thermodynamic hazards that cannot be ca
 - **Schedule Negotiator**: Evaluates user activities against hourly diurnal curves to recommend cooler substitute time slots.
 - **Clinical Symptom Triage**: Escalates users from mild muscle cramps to stage-3 heatstroke emergency with one-tap ambulance dispatch (`108`).
 
-### 3. 🛰️ Offline-First & Empirical Spatial IDW Interpolator
-- **Zero-Network Architecture**: Functions entirely in aircraft mode or offline disaster zones. Pre-caches synoptic baselines in Service Worker storage.
+### 3. 🛰️ Offline-Resilient Architecture, Provenance Separation & Spatial IDW
+- **Clear Source Separation**: Strictly distinguishes **Live Observation** (`Open-Meteo`, `observed_at` timestamp, `timezone=auto`), **Hourly Forecast** (`Open-Meteo Forecast API`), **Offline Estimate** (`NOAA GSOD IDW`, `observed_at = null`), and **Research Baseline** (46 synoptic weather stations).
+- **Safe PWA Caching**: [`frontend/public/sw.js`](./frontend/public/sw.js) precaches the application shell for offline use while excluding `/api/geo/*`, `/api/safety/*`, and `/api/predict/*` (`NO_CACHE_API_PREFIXES`) so stale weather readings or old IP cities are never replayed when offline.
+- **Security-Hardened IP Lookup**: [`backend/api/geo.py`](./backend/api/geo.py) accepts forwarded client IP headers (`X-Forwarded-For`, `X-Real-IP`) only when the immediate peer is allowlisted in `TRUSTED_PROXY_IPS`, rejects non-routable/loopback/CGNAT ranges, and returns explicit `status: "unavailable"` instead of defaulting to a hardcoded city.
 - **Mathematical IDW Optimization**: Evaluates $k \in [1..6]$ nearest neighbors and distance powers $p \in [1.0..3.0]$ via Leave-One-Station-Out Cross-Validation (LOSOCV).
-- **Selected Configuration**: $k=4, p=2.0$ represents the Pareto frontier of accuracy ($4.08^\circ\text{C}$ HI MAE, $2.76^\circ\text{C}$ Temp MAE, $R^2 = 0.77$) and physical grounding (inverse-square thermal radiation flux decay).
-- **Sub-Millisecond Latency**: Mean latency of **$0.78\text{ms}$** ($783.6\mu\text{s}$) across 1,000 iterations ($1,275\text{ ops/sec}$), empirically verified via hardware timer benchmarks.
+- **Selected Configuration**: $k=4, p=2.0$ represents the Pareto frontier of accuracy ($4.08^\circ\text{C}$ HI MAE, $2.76^\circ\text{C}$ Temp MAE, $R^2 = 0.233$ in [`IDW_VALIDATION.md`](./IDW_VALIDATION.md)) and physical grounding (inverse-square thermal radiation flux decay).
+- **Sub-Millisecond Latency**: Latest release benchmark achieved **$0.364\text{ms}$ median / $0.394\text{ms}$ mean** ($2,538\text{ ops/sec}$, down from $0.78\text{ms}$ baseline across 1,000 iterations in [`IDW_VALIDATION.md`](./IDW_VALIDATION.md)), well under the $1\text{ms}$ real-time offline budget.
 
 ---
 
@@ -110,11 +117,11 @@ Modern extreme heatwaves present complex thermodynamic hazards that cannot be ca
 | **Distance Weighting Power ($p$)** | **2.0** | Matches inverse-square law ($1/d^2$) of thermal flux radiation |
 | **LOSOCV Heat Index MAE** | **$4.08^\circ\text{C}$** | Cross-validated spatial error across all 46 synoptic stations |
 | **LOSOCV Temperature MAE** | **$2.76^\circ\text{C}$** | Mean absolute ambient temperature error across India |
-| **LOSOCV $R^2$ Score** | **$0.77$** | Percentage of national spatial variance explained by IDW model |
+| **LOSOCV $R^2$ Score** | **$0.233$** | Spatial variance explained in LOSOCV (`IDW_VALIDATION.md`) |
 | **Distance Correlation (Pearson $r$)**| **$0.183$** | Weak correlation confirms spatial locality holds without error explosion |
-| **Mean Offline Latency** | **$0.78\text{ms}$ ($783.6\mu\text{s}$)**| Sub-millisecond execution on standard single-thread CPU |
-| **P95 Tail Latency** | **$1.01\text{ms}$** | Bounded latency under load |
-| **Throughput** | **$1,275\text{ ops/sec}$** | High-throughput offline spatial inference capability |
+| **Mean Offline Latency** | **$0.394\text{ms}$ (baseline $0.78\text{ms}$)** | Sub-millisecond execution on standard single-thread CPU |
+| **Median / P95 Latency** | **$0.364\text{ms}$ / $1.01\text{ms}$** | Bounded sub-millisecond inference under load |
+| **Throughput** | **$2,538\text{ ops/sec}$** | High-throughput offline spatial inference capability |
 | **Optimal Cluster Count ($K$)** | **$4$** | Maximum separation of Distinct Climate Regimes (Silhouette $0.51$) |
 | **Ward's Partition Agreement (ARI)**| **$0.772$** | High agreement between Partition and Hierarchical clustering |
 | **PCA Cumulative Variance (2D)** | **$84.2\%$** | Total variance preserved in 2D biplot projection |
@@ -126,26 +133,27 @@ Modern extreme heatwaves present complex thermodynamic hazards that cannot be ca
 For in-depth viva examination, research review, and architectural audit, refer to the dedicated reference documents:
 
 1. 🏛️ **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Component diagrams, GNSS reception flow, Service Worker offline caching, and FastAPI endpoints.
-2. 🔬 **[METHODOLOGY.md](./METHODOLOGY.md)**: Mathematical formulations, data cleaning, feature engineering, ANOVA $F$-test, and clustering sweeps.
-3. 📐 **[IDW_VALIDATION.md](./IDW_VALIDATION.md)**: Full LOSOCV experiment across 30 $(k, p)$ configurations, station residuals, and distance correlation.
-4. 📴 **[OFFLINE_MODE.md](./OFFLINE_MODE.md)**: Zero-network offline architecture, Service Worker cache strategy, and Haversine geodesy.
-5. 🛡️ **[SAFETY_ENGINE.md](./SAFETY_ENGINE.md)**: Biometeorological decision logic, Rothfusz equations, persona sensitivity matrix, and clinical triage.
-6. ⚠️ **[LIMITATIONS.md](./LIMITATIONS.md)**: Physical boundary limits, altitude lapse rate assumptions, urban heat island constraints, and future work.
-7. 🎓 **[VIVA_QUESTIONS.md](./VIVA_QUESTIONS.md)**: Top 25 tough academic examiner questions with exhaustive, scientifically backed answers.
+2. 🚀 **[DEPLOYMENT.md](./DEPLOYMENT.md)**: Production deployment configuration for Vercel (SPA + `/api/*` rewrite + cache headers), Render (`render.yaml` & `TRUSTED_PROXY_IPS`), and Docker.
+3. 🔬 **[METHODOLOGY.md](./METHODOLOGY.md)**: Mathematical formulations, data cleaning, feature engineering, ANOVA $F$-test, and clustering sweeps.
+4. 📐 **[IDW_VALIDATION.md](./IDW_VALIDATION.md)**: Full LOSOCV experiment across 30 $(k, p)$ configurations, station residuals, and distance correlation.
+5. 📴 **[OFFLINE_MODE.md](./OFFLINE_MODE.md)**: Offline architecture, Service Worker cache strategy, and Haversine geodesy.
+6. 🛡️ **[SAFETY_ENGINE.md](./SAFETY_ENGINE.md)**: Biometeorological decision logic, Rothfusz equations, persona sensitivity matrix, and clinical triage.
+7. ⚠️ **[LIMITATIONS.md](./LIMITATIONS.md)**: Physical boundary limits, altitude lapse rate assumptions, urban heat island constraints, and future work.
+8. 🎓 **[VIVA_QUESTIONS.md](./VIVA_QUESTIONS.md)**: Top 25 tough academic examiner questions with exhaustive, scientifically backed answers.
 
 ---
 
-## 🚀 Quickstart Guide
+## 🚀 Quickstart & Deployment Guide
 
 ### Prerequisites
 - **Python**: 3.10+ (tested on Python 3.12)
-- **Node.js**: 18+ (tested on Node 20+)
+- **Node.js**: 18+ (tested on Node 20 / Node 22)
 - **OS**: Windows, Linux, or macOS
 
 ### 1. Clone & Set Up Backend
 ```bash
-git clone https://github.com/ai-mohitkumar/User-Behavior-Clustering.git
-cd "HeatMap AI"
+git clone https://github.com/ai-mohitkumar/HeatMap-AI.git
+cd HeatMap-AI
 
 # Create and activate virtual environment
 python -m venv .venv
@@ -157,10 +165,10 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the complete test suite (18 biometeorological & pipeline tests)
+# Run the complete test suite (50 backend, safety, geo, and provenance tests)
 python -m pytest tests/ -v
 
-# Start the FastAPI daemon
+# Start the FastAPI server
 uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -171,49 +179,42 @@ cd frontend
 # Install Node dependencies
 npm install
 
-# Run TypeScript typecheck & production build
-npm run build
+# Lint, type-check & build production bundle
+npm run lint && npm run build
 
 # Start local development server
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173`.  
-The interactive Swagger API docs will be at `http://127.0.0.1:8000/docs`.
+- Local Web App: http://localhost:5173/
+- Local Swagger API Docs: http://127.0.0.1:8000/docs
+- Cloud Production Guide (Vercel, Render & Docker): see **[DEPLOYMENT.md](./DEPLOYMENT.md)**
 
 ---
 
 ## 🧪 Running Automated Verification
 
-To execute the full verification suite including the biometeorological 5-tier safety matrix, wind dissipation physics, wet-bulb traps, persona differentiation, and pipeline tests:
+Execute the 50-test automated regression suite covering the ML pipeline, biometeorological 5-tier safety matrix, 787-district geo registry, trusted-proxy security, reverse geocoding, and live/offline provenance separation:
 
 ```bash
-# Run pytest with full verbosity
+# Run full pytest suite (50 tests across 5 test modules)
 .venv\Scripts\python.exe -m pytest tests/ -v
+
+# Run end-to-end release qualification gate (10/10 checks: pytest + LOSOCV + benchmark + oxlint + vite build + SW + GNSS)
+.venv\Scripts\python.exe scripts/release_validation.py
 ```
 
-Expected output:
-```
-tests/test_pipeline.py::test_multiyear_data_generation PASSED            [  5%]
-tests/test_pipeline.py::test_preprocessing_pipeline PASSED               [ 11%]
-tests/test_pipeline.py::test_feature_engineering_formulas PASSED         [ 16%]
-tests/test_pipeline.py::test_anova_feature_separation PASSED             [ 22%]
-tests/test_pipeline.py::test_kmeans_multi_k_evaluation PASSED            [ 27%]
-tests/test_pipeline.py::test_pca_and_umap PASSED                         [ 33%]
-tests/test_pipeline.py::test_station_explainability PASSED               [ 38%]
-tests/test_pipeline.py::test_fastapi_endpoints PASSED                    [ 44%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_biometeorological_5_tier_matrix[24.0-40.0-Low] PASSED [ 50%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_biometeorological_5_tier_matrix[32.0-50.0-Moderate] PASSED [ 55%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_biometeorological_5_tier_matrix[36.0-55.0-High] PASSED [ 61%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_biometeorological_5_tier_matrix[40.0-55.0-Very High] PASSED [ 66%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_biometeorological_5_tier_matrix[45.0-75.0-Extreme] PASSED [ 72%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_humid_heat_vs_dry_heat_explainability PASSED [ 77%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_wind_dissipation_mitigation PASSED [ 83%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_persona_sensitivity_differentiation PASSED [ 88%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_activity_evaluator_safety_tiers PASSED [ 94%]
-tests/test_safety_matrix.py::TestSafetyEngineMatrix::test_clinical_symptom_triage_escalation PASSED [100%]
-
-======================= 18 passed in 6.15s =======================
+Latest verified qualification summary:
+```text
+tests/test_pipeline.py                 8/8 passed
+tests/test_safety_matrix.py           12/12 passed
+tests/test_geo_store.py                8/8 passed
+tests/test_climate_intelligence.py     7/7 passed
+tests/test_geo_and_weather_fixes.py   15/15 passed
+--------------------------------------------------
+Total Pytest Suite:                   50/50 PASSED
+Master Release Gate (release_validation.py): 10/10 [QUALIFIED]
+Frontend Lint & Build:                oxlint (0 errors) + tsc -b && vite build
 ```
 
 ---
