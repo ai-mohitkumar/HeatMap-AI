@@ -82,8 +82,8 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'Google Pixel, Samsung Galaxy, OnePlus, Xiaomi',
     file: 'HeatShield-AI-v2.0-universal.apk',
     url: '/downloads/HeatShield-AI-v2.0-universal.apk',
-    size: '601.6 KB',
-    version: 'v2.0.4',
+    size: '615.0 KB',
+    version: 'v2.0.5',
     format: 'APK (Native Signed Package)',
     compatibility: 'Android 7.0 to 15 (ARM64, ARMv7, x86_64)',
     sha256: '7d133584e9279b44731ed98dc0eba87a2561deb0e81b0020092ba02fde477978',
@@ -93,7 +93,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
       'Tap "Download APK" to save HeatShield-AI-v2.0-universal.apk directly to your device.',
       'Open Downloads or tap the download completion notification.',
       'If prompted with "Install unknown apps", tap Settings and enable "Allow from this source".',
-      'Tap "Install" — HeatShield AI installs cleanly and opens with full offline heat safety intelligence!'
+      'Tap "Install" — runs on an embedded local server with hybrid online/offline vector Live Map & native GPS!'
     ]
   },
   {
@@ -103,7 +103,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     file: 'HeatShield-AI-iOS.mobileconfig',
     url: '/downloads/HeatShield-AI-iOS.mobileconfig',
     size: '1.8 KB',
-    version: 'v2.0.4',
+    version: 'v2.0.5',
     format: 'Apple Configuration Profile (.mobileconfig)',
     compatibility: 'iOS 15.0+, iPadOS 15.0+, macOS Monterey+',
     sha256: 'ab3313e6ad542da7473f911ed8ea571644abe83b710beaff363603c5ae78101d',
@@ -124,7 +124,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     file: 'HeatShield-WearOS-Companion.apk',
     url: '/downloads/HeatShield-WearOS-Companion.apk',
     size: '12.5 KB',
-    version: 'v2.0.4',
+    version: 'v2.0.5',
     format: 'Wear OS Native Signed APK',
     compatibility: 'Wear OS 3.0+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3',
     sha256: 'd4312a401ad29fbcc961fd71772b1a858b4127f456f6949f5dce043e9775d714',
@@ -143,18 +143,18 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'Windows 10/11, macOS, Linux',
     file: 'HeatShield-AI-Desktop-Windows.zip',
     url: '/downloads/HeatShield-AI-Desktop-Windows.zip',
-    size: '586.6 KB',
-    version: 'v2.0.4',
+    size: '600.0 KB',
+    version: 'v2.0.5',
     format: 'Windows & macOS Standalone (.zip)',
     compatibility: 'Windows 10/11 (64-bit), macOS 12+, Linux x86_64',
     sha256: '53117cb3a2a4321f2e74d31be22bf7f4f64c9a479996c88a65ecf3b285cae02f',
     badge: '1-Click Portable',
     badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
     instructions: [
-      'Download HeatShield-AI-Desktop-Windows.zip and extract it to any folder.',
-      'Double-click "HeatShield-AI.bat" (Windows) or launch "web/index.html" in Chrome/Edge.',
-      'The complete offline Command Center opens locally in your browser with zero latency.',
-      'Runs with all 46 pre-cached weather stations and continuous spatial IDW without internet.'
+      'Download HeatShield-AI-Desktop-Windows.zip and extract all files to a folder.',
+      'Windows: Double-click "HeatShield-AI.bat" (starts a local loopback server automatically via Python or built-in Windows PowerShell).',
+      'macOS / Linux: Run "./launch-mac-linux.sh" in Terminal to open the Command Center in your browser.',
+      'Includes offline vector map contours + auto tile failover, 46 weather stations, and continuous spatial IDW with zero internet required.'
     ]
   },
   {
@@ -164,7 +164,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     file: 'HeatShield-AI-Master-Offline-Suite.zip',
     url: '/downloads/HeatShield-AI-Master-Offline-Suite.zip',
     size: '18.8 KB',
-    version: 'v2.0.4',
+    version: 'v2.0.5',
     format: 'Full ML, GIS & Research Bundle (.zip)',
     compatibility: 'Universal (Python 3.10+, Jupyter, Node.js)',
     sha256: 'bf29c08a634324be193a1ea931d41ec40e92a913bb34cef44aadc35ab7eed850',
@@ -1384,7 +1384,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-slate-400 font-mono">Build Version:</span>
               <span className="px-2.5 py-1 rounded-lg bg-[#131E3A] border border-slate-700 text-amber-300 font-mono font-bold text-xs">
-                v2.0.4-RELEASE
+                {`${downloadPackages[0]?.version || 'v2.0.5'}-RELEASE`}
               </span>
             </div>
           </div>

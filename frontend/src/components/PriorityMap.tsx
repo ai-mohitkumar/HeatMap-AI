@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import type { StationGeoRecord, StationExplanation } from '../types';
 import { api } from '../services/api';
 import { getOfflineStationExplanation } from '../utils/offlineEngine';
+import { ResilientMapLayers, MapResizeObserver } from './shared/ResilientMapLayers';
 import {
   Filter,
   Search,
@@ -21,24 +22,16 @@ import {
 interface PriorityMapProps {
   stations: StationGeoRecord[];
   activeK: number;
+  userLat?: number | null;
+  userLon?: number | null;
+  locationName?: string;
+  heatIndexC?: number;
+  riskLevel?: string;
 }
 
 // Sub-component to enforce Leaflet viewport size recalculation and fly-to transitions
 function MapController({ selectedStation }: { selectedStation: StationGeoRecord | null }) {
   const map = useMap();
-
-  useEffect(() => {
-    // Invalidate size immediately and after layout rendering
-    map.invalidateSize();
-    const t1 = setTimeout(() => map.invalidateSize(), 150);
-    const t2 = setTimeout(() => map.invalidateSize(), 400);
-    const t3 = setTimeout(() => map.invalidateSize(), 800);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [map]);
 
   useEffect(() => {
     if (selectedStation) {
@@ -48,10 +41,23 @@ function MapController({ selectedStation }: { selectedStation: StationGeoRecord 
     }
   }, [selectedStation, map]);
 
-  return null;
+  return <MapResizeObserver />;
 }
 
-export const PriorityMap: React.FC<PriorityMapProps> = ({ stations }) => {
+export const PriorityMap: React.FC<PriorityMapProps> = ({
+  stations,
+  userLat = null,
+  userLon = null,
+  locationName = 'Active Location',
+  heatIndexC = 0,
+  riskLevel = 'Moderate'
+}) => {
+  const hasVerifiedUser =
+    userLat !== null &&
+    userLon !== null &&
+    Number.isFinite(userLat) &&
+    Number.isFinite(userLon) &&
+    !(userLat === 0 && userLon === 0);
   const [selectedTier, setSelectedTier] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
@@ -153,18 +159,41 @@ export const PriorityMap: React.FC<PriorityMapProps> = ({ stations }) => {
       {/* Map + Side Explainability Drawer Layout */}
       <div className="flex flex-col lg:flex-row gap-4">
         {/* Interactive Leaflet Map */}
-        <div className="h-[530px] flex-1 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 relative shadow-inner">
+        <div className="h-[530px] min-h-[460px] flex-1 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 relative shadow-inner bg-[#070E21]">
           <MapContainer
             center={defaultCenter}
             zoom={defaultZoom}
             scrollWheelZoom={true}
-            style={{ height: '100%', width: '100%' }}
+            style={{ height: '100%', width: '100%', background: '#070E21' }}
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            <ResilientMapLayers />
             <MapController selectedStation={stations.find((s) => s.station_id === selectedStationId) || null} />
+
+            {hasVerifiedUser && (
+              <CircleMarker
+                center={[userLat as number, userLon as number]}
+                radius={9}
+                pathOptions={{
+                  color: '#ffffff',
+                  weight: 2.5,
+                  fillColor: '#2563EB',
+                  fillOpacity: 1
+                }}
+              >
+                <Popup>
+                  <div className="p-1 text-slate-900 font-sans text-xs min-w-[160px]">
+                    <strong className="block text-blue-600 font-bold">Active Location</strong>
+                    <span className="font-semibold text-slate-800 block">{locationName}</span>
+                    {heatIndexC > 0 && (
+                      <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
+                        <span>Heat Index: <strong>{heatIndexC.toFixed(1)}°C</strong></span>
+                        <span className="font-bold text-rose-600">{riskLevel}</span>
+                      </div>
+                    )}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            )}
 
             {filteredStations.map((st) => (
               <CircleMarker

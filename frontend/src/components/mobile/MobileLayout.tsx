@@ -493,6 +493,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               selectedStationId={selectedStationId}
               onSelectStation={onSelectStation}
               isFullscreen={false}
+              isTabView={true}
               locationUnavailable={locationUnavailable || locationAcquiring}
             />
           </div>

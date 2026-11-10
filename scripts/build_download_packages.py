@@ -110,19 +110,20 @@ def build_android_apk():
     with tempfile.TemporaryDirectory() as td:
         src_dir = os.path.join(td, "src", "ai", "heatshield", "app")
         res_dir = os.path.join(td, "res", "values")
+        xml_dir = os.path.join(td, "res", "xml")
         draw_dir = os.path.join(td, "res", "drawable")
         assets_web = os.path.join(td, "assets", "web")
         gen_dir = os.path.join(td, "gen")
         bin_dir = os.path.join(td, "bin")
         dex_dir = os.path.join(td, "dex")
-        for d in [src_dir, res_dir, draw_dir, assets_web, gen_dir, bin_dir, dex_dir]:
+        for d in [src_dir, res_dir, xml_dir, draw_dir, assets_web, gen_dir, bin_dir, dex_dir]:
             os.makedirs(d, exist_ok=True)
             
         manifest = """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ai.heatshield.app"
-    android:versionCode="204"
-    android:versionName="2.0.4">
+    android:versionCode="205"
+    android:versionName="2.0.5">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -135,6 +136,8 @@ def build_android_apk():
         android:label="@string/app_name"
         android:icon="@drawable/ic_launcher"
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
         <activity
@@ -152,6 +155,22 @@ def build_android_apk():
 """
         with open(os.path.join(td, "AndroidManifest.xml"), "w", encoding="utf-8") as f:
             f.write(manifest)
+
+        network_security_config = """<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
+"""
+        with open(os.path.join(xml_dir, "network_security_config.xml"), "w", encoding="utf-8") as f:
+            f.write(network_security_config)
             
         with open(os.path.join(res_dir, "strings.xml"), "w", encoding="utf-8") as f:
             f.write('<resources><string name="app_name">HeatShield AI</string></resources>')
@@ -178,23 +197,212 @@ def build_android_apk():
         main_activity = """package ai.heatshield.app;
 
 import android.app.Activity;
-import android.os.Bundle;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.net.Uri;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.view.Window;
 import android.webkit.GeolocationPermissions;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.view.Window;
+
+import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private WebView mWebView;
+    private LocalAssetServer mAssetServer;
+    private LocationListener mActiveLocationListener;
+    private Handler mHandler;
     private static final int REQ_LOC = 1001;
+
+    private static final class LocalAssetServer {
+        private final AssetManager assets;
+        private final ServerSocket serverSocket;
+        private final ExecutorService executor = Executors.newCachedThreadPool();
+        private volatile boolean running = true;
+
+        LocalAssetServer(AssetManager assets) throws IOException {
+            this.assets = assets;
+            this.serverSocket = new ServerSocket(0, 32, InetAddress.getByName("127.0.0.1"));
+            Thread acceptThread = new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    while (running && !serverSocket.isClosed()) {
+                        try {
+                            final Socket client = serverSocket.accept();
+                            executor.execute(new Runnable() {
+                                @Override
+                                public void run() {
+                                    handleClient(client);
+                                }
+                            });
+                        } catch (IOException ignored) {
+                            if (!running || serverSocket.isClosed()) {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }, "HeatShieldLocalAssetServer");
+            acceptThread.setDaemon(true);
+            acceptThread.start();
+        }
+
+        int getPort() {
+            return serverSocket.getLocalPort();
+        }
+
+        void stop() {
+            running = false;
+            try {
+                serverSocket.close();
+            } catch (IOException ignored) {
+            }
+            executor.shutdownNow();
+        }
+
+        private void handleClient(Socket client) {
+            try (Socket sock = client) {
+                sock.setSoTimeout(5000);
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(sock.getInputStream(), StandardCharsets.US_ASCII)
+                );
+                String requestLine = reader.readLine();
+                if (requestLine == null || requestLine.isEmpty()) {
+                    return;
+                }
+                String headerLine;
+                while ((headerLine = reader.readLine()) != null && !headerLine.isEmpty()) {
+                    // Drain HTTP request headers
+                }
+
+                String[] parts = requestLine.split(" ");
+                String method = parts.length >= 1 ? parts[0].toUpperCase(Locale.US) : "GET";
+                String rawTarget = parts.length >= 2 ? parts[1] : "/";
+                int qIdx = rawTarget.indexOf('?');
+                if (qIdx >= 0) {
+                    rawTarget = rawTarget.substring(0, qIdx);
+                }
+                int fIdx = rawTarget.indexOf('#');
+                if (fIdx >= 0) {
+                    rawTarget = rawTarget.substring(0, fIdx);
+                }
+                String decoded = URLDecoder.decode(rawTarget, "UTF-8").replace('\\\\', '/');
+                while (decoded.startsWith("/")) {
+                    decoded = decoded.substring(1);
+                }
+
+                OutputStream out = sock.getOutputStream();
+                boolean isHead = "HEAD".equals(method);
+
+                if (decoded.contains("..")) {
+                    writeResponse(out, "403 Forbidden", "text/plain; charset=utf-8", new byte[0], isHead);
+                    return;
+                }
+
+                if (decoded.isEmpty()) {
+                    decoded = "index.html";
+                }
+
+                if (decoded.startsWith("api/")) {
+                    byte[] apiErr = "{\\"error\\":\\"offline_local_bundle\\",\\"offline\\":true}".getBytes(StandardCharsets.UTF_8);
+                    writeResponse(out, "404 Not Found", "application/json; charset=utf-8", apiErr, isHead);
+                    return;
+                }
+
+                byte[] payload = readAsset("web/" + decoded);
+                String servedPath = decoded;
+                if (payload == null && !decoded.contains(".")) {
+                    payload = readAsset("web/index.html");
+                    servedPath = "index.html";
+                }
+
+                if (payload == null) {
+                    byte[] notFound = "Not Found".getBytes(StandardCharsets.UTF_8);
+                    writeResponse(out, "404 Not Found", "text/plain; charset=utf-8", notFound, isHead);
+                    return;
+                }
+
+                writeResponse(out, "200 OK", guessMimeType(servedPath), payload, isHead);
+            } catch (Exception ignored) {
+            }
+        }
+
+        private byte[] readAsset(String assetPath) {
+            try (InputStream is = assets.open(assetPath);
+                 ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+                byte[] chunk = new byte[16384];
+                int read;
+                while ((read = is.read(chunk)) != -1) {
+                    buffer.write(chunk, 0, read);
+                }
+                return buffer.toByteArray();
+            } catch (IOException e) {
+                return null;
+            }
+        }
+
+        private static void writeResponse(
+            OutputStream out,
+            String status,
+            String contentType,
+            byte[] body,
+            boolean headOnly
+        ) throws IOException {
+            String headers =
+                "HTTP/1.1 " + status + "\\r\\n" +
+                "Content-Type: " + contentType + "\\r\\n" +
+                "Content-Length: " + body.length + "\\r\\n" +
+                "Cache-Control: no-cache\\r\\n" +
+                "Access-Control-Allow-Origin: *\\r\\n" +
+                "Connection: close\\r\\n\\r\\n";
+            out.write(headers.getBytes(StandardCharsets.US_ASCII));
+            if (!headOnly && body.length > 0) {
+                out.write(body);
+            }
+            out.flush();
+        }
+
+        private static String guessMimeType(String path) {
+            String lower = path.toLowerCase(Locale.US);
+            if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html; charset=utf-8";
+            if (lower.endsWith(".js") || lower.endsWith(".mjs")) return "application/javascript; charset=utf-8";
+            if (lower.endsWith(".css")) return "text/css; charset=utf-8";
+            if (lower.endsWith(".json") || lower.endsWith(".webmanifest")) return "application/json; charset=utf-8";
+            if (lower.endsWith(".svg")) return "image/svg+xml";
+            if (lower.endsWith(".png")) return "image/png";
+            if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+            if (lower.endsWith(".ico")) return "image/x-icon";
+            if (lower.endsWith(".woff2")) return "font/woff2";
+            if (lower.endsWith(".woff")) return "font/woff";
+            if (lower.endsWith(".ttf")) return "font/ttf";
+            return "application/octet-stream";
+        }
+    }
 
     public class NativeGpsBridge {
         @JavascriptInterface
@@ -213,14 +421,56 @@ public class MainActivity extends Activity {
         }
     }
 
+    private boolean hasFinePermission() {
+        return checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private boolean hasAnyLocationPermission() {
+        boolean coarse = checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        return hasFinePermission() || coarse;
+    }
+
+    private void dispatchJs(final String script) {
+        if (mWebView == null) return;
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                if (mWebView != null) {
+                    mWebView.evaluateJavascript(script, null);
+                }
+            }
+        });
+    }
+
+    private boolean handleUrlNavigation(String url) {
+        if (url == null || url.isEmpty()) {
+            return false;
+        }
+        if (
+            url.startsWith("http://127.0.0.1") ||
+            url.startsWith("http://localhost") ||
+            url.startsWith("file:///android_asset/")
+        ) {
+            return false;
+        }
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            startActivity(intent);
+        } catch (Exception ignored) {
+        }
+        return true;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
-        
+        mHandler = new Handler(getMainLooper());
+
         mWebView = new WebView(this);
+        mWebView.setBackgroundColor(0xFF090F1F);
         setContentView(mWebView);
-        
+
         WebSettings settings = mWebView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -228,20 +478,38 @@ public class MainActivity extends Activity {
         settings.setGeolocationEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+        }
+
+        // Strip WebView '; wv)' token so public map tile CDNs do not block tile requests
+        String ua = settings.getUserAgentString();
+        if (ua != null) {
+            ua = ua.replace("; wv)", ")").replace("; wv;", ";").trim() + " HeatShieldAI/2.0.5";
+            settings.setUserAgentString(ua);
+        }
 
         mWebView.addJavascriptInterface(new NativeGpsBridge(), "HeatShieldNativeGps");
-        
+
         mWebView.setWebViewClient(new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request != null && request.getUrl() != null) {
+                    return handleUrlNavigation(request.getUrl().toString());
+                }
+                return false;
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                view.loadUrl(url);
-                return true;
+                return handleUrlNavigation(url);
             }
         });
-        
+
         mWebView.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
@@ -249,7 +517,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        if (!hasAnyLocationPermission()) {
             requestPermissions(new String[]{
                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION
@@ -257,71 +525,164 @@ public class MainActivity extends Activity {
         } else {
             acquireNativeLocation();
         }
-        
-        mWebView.loadUrl("file:///android_asset/web/index.html");
+
+        String entryUrl = "file:///android_asset/web/index.html";
+        try {
+            mAssetServer = new LocalAssetServer(getAssets());
+            entryUrl = "http://127.0.0.1:" + mAssetServer.getPort() + "/index.html";
+        } catch (IOException ignored) {
+            settings.setAllowFileAccessFromFileURLs(true);
+            settings.setAllowUniversalAccessFromFileURLs(true);
+        }
+        mWebView.loadUrl(entryUrl);
     }
 
     private void acquireNativeLocation() {
         try {
-            if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (!hasAnyLocationPermission()) {
                 requestPermissions(new String[]{
                     android.Manifest.permission.ACCESS_FINE_LOCATION,
                     android.Manifest.permission.ACCESS_COARSE_LOCATION
                 }, REQ_LOC);
                 return;
             }
-            LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+
+            final LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
             Location loc = null;
+            boolean fineGranted = hasFinePermission();
             if (lm != null) {
-                loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                if (loc == null) {
-                    loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                if (fineGranted) {
+                    try {
+                        loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+                    } catch (SecurityException ignored) {
+                    }
                 }
                 if (loc == null) {
-                    loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+                    try {
+                        loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                    } catch (SecurityException ignored) {
+                    }
+                }
+                if (loc == null) {
+                    try {
+                        loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
+                    } catch (SecurityException ignored) {
+                    }
                 }
             }
+
             if (loc != null) {
                 final double lat = loc.getLatitude();
                 final double lon = loc.getLongitude();
                 final float acc = loc.getAccuracy();
-                mWebView.evaluateJavascript("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + lat + "," + lon + "," + acc + ");", null);
-            } else if (lm != null) {
-                LocationListener listener = new LocationListener() {
+                dispatchJs("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + lat + "," + lon + "," + acc + ");");
+                return;
+            }
+
+            if (lm != null) {
+                if (mActiveLocationListener != null) {
+                    try {
+                        lm.removeUpdates(mActiveLocationListener);
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                final LocationListener listener = new LocationListener() {
                     @Override
                     public void onLocationChanged(Location location) {
                         final double lat = location.getLatitude();
                         final double lon = location.getLongitude();
                         final float acc = location.getAccuracy();
-                        mWebView.evaluateJavascript("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + lat + "," + lon + "," + acc + ");", null);
-                        lm.removeUpdates(this);
+                        try {
+                            lm.removeUpdates(this);
+                        } catch (Exception ignored) {
+                        }
+                        mActiveLocationListener = null;
+                        dispatchJs("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + lat + "," + lon + "," + acc + ");");
                     }
                     @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
                     @Override public void onProviderEnabled(String provider) {}
                     @Override public void onProviderDisabled(String provider) {}
                 };
+                mActiveLocationListener = listener;
+
+                String chosenProvider = null;
                 if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                    lm.requestSingleUpdate(LocationManager.NETWORK_PROVIDER, listener, null);
-                } else if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                    lm.requestSingleUpdate(LocationManager.GPS_PROVIDER, listener, null);
+                    chosenProvider = LocationManager.NETWORK_PROVIDER;
+                } else if (fineGranted && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                    chosenProvider = LocationManager.GPS_PROVIDER;
+                } else if (lm.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)) {
+                    chosenProvider = LocationManager.PASSIVE_PROVIDER;
+                }
+
+                if (chosenProvider != null) {
+                    lm.requestLocationUpdates(chosenProvider, 0L, 0f, listener, getMainLooper());
+                    if (mHandler != null) {
+                        mHandler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (mActiveLocationListener == listener) {
+                                    try {
+                                        lm.removeUpdates(listener);
+                                    } catch (Exception ignored) {
+                                    }
+                                    mActiveLocationListener = null;
+                                }
+                            }
+                        }, 9000);
+                    }
                 } else {
-                    mWebView.evaluateJavascript("if(window.__onNativeGpsError) window.__onNativeGpsError('Location sensors disabled in device settings.');", null);
+                    dispatchJs("if(window.__onNativeGpsError) window.__onNativeGpsError('Location sensors disabled in device settings.');");
                 }
             }
         } catch (Exception e) {
             final String safeErr = org.json.JSONObject.quote(e.getMessage() != null ? e.getMessage() : "Location acquisition error");
-            mWebView.evaluateJavascript("if(window.__onNativeGpsError) window.__onNativeGpsError(" + safeErr + ");", null);
+            dispatchJs("if(window.__onNativeGpsError) window.__onNativeGpsError(" + safeErr + ");");
         }
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_LOC && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            acquireNativeLocation();
-        } else {
-            mWebView.evaluateJavascript("if(window.__onNativeGpsError) window.__onNativeGpsError('Location permission was not granted.');", null);
+        if (requestCode == REQ_LOC) {
+            boolean grantedAny = false;
+            if (grantResults != null) {
+                for (int r : grantResults) {
+                    if (r == PackageManager.PERMISSION_GRANTED) {
+                        grantedAny = true;
+                        break;
+                    }
+                }
+            }
+            if (grantedAny) {
+                acquireNativeLocation();
+            } else {
+                dispatchJs("if(window.__onNativeGpsError) window.__onNativeGpsError('Location permission was not granted.');");
+            }
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (mActiveLocationListener != null) {
+            try {
+                LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    lm.removeUpdates(mActiveLocationListener);
+                }
+            } catch (Exception ignored) {
+            }
+            mActiveLocationListener = null;
+        }
+        if (mAssetServer != null) {
+            mAssetServer.stop();
+            mAssetServer = null;
+        }
+        if (mWebView != null) {
+            mWebView.destroy();
+            mWebView = null;
+        }
+        super.onDestroy();
     }
 
     @Override
@@ -465,8 +826,8 @@ def build_wearos_apk():
         manifest = """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ai.heatshield.wear"
-    android:versionCode="204"
-    android:versionName="2.0.4">
+    android:versionCode="205"
+    android:versionName="2.0.5">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -606,9 +967,204 @@ public class WearMainActivity extends Activity {
 
 def build_desktop_windows_bundle():
     zip_path = os.path.join(OUTPUT_DIR, "HeatShield-AI-Desktop-Windows.zip")
-    print(f"\n[*] Building Desktop Windows Standalone Package: {zip_path}...")
-    
+    print(f"\n[*] Building Desktop Standalone Package (Windows/macOS/Linux): {zip_path}...")
+
+    server_py = """#!/usr/bin/env python3
+\"\"\"Zero-race local loopback HTTP server for HeatShield AI Desktop Standalone.\"\"\"
+import functools
+import http.server
+import os
+import socketserver
+import threading
+import webbrowser
+
+
+class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+class HeatShieldHandler(http.server.SimpleHTTPRequestHandler):
+    extensions_map = {
+        **http.server.SimpleHTTPRequestHandler.extensions_map,
+        ".js": "application/javascript; charset=utf-8",
+        ".mjs": "application/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".json": "application/json; charset=utf-8",
+        ".webmanifest": "application/manifest+json; charset=utf-8",
+        ".png": "image/png",
+        ".ico": "image/x-icon",
+    }
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
+    def do_GET(self):
+        clean_path = self.path.split("?", 1)[0].split("#", 1)[0]
+        if clean_path.startswith("/api/"):
+            body = b'{"error":"offline_local_bundle","offline":true}'
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
+    def log_message(self, format, *args):
+        pass
+
+
+def main():
+    web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+    handler = functools.partial(HeatShieldHandler, directory=web_dir)
+
+    httpd = None
+    chosen_port = None
+    for candidate in list(range(18573, 18596)) + [0]:
+        try:
+            httpd = ThreadingTCPServer(("127.0.0.1", candidate), handler)
+            chosen_port = httpd.server_address[1]
+            break
+        except OSError:
+            continue
+
+    if httpd is None or chosen_port is None:
+        raise RuntimeError("Could not bind any local loopback port for HeatShield AI.")
+
+    url = f"http://127.0.0.1:{chosen_port}/"
+    print(f"[OK] HeatShield AI local server listening at {url}")
+    print("[*] Press Ctrl+C in this window when finished to stop the server.")
+    threading.Timer(0.25, lambda: webbrowser.open(url)).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\\n[*] Shutting down HeatShield AI server...")
+    finally:
+        httpd.server_close()
+
+
+if __name__ == "__main__":
+    main()
+"""
+
+    server_ps1 = """$ErrorActionPreference = 'Stop'
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$webRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDir 'web'))
+
+if (-not (Test-Path $webRoot)) {
+    Write-Error "Web assets directory missing: $webRoot"
+    exit 1
+}
+
+$mimeTypes = @{
+    '.html' = 'text/html; charset=utf-8'
+    '.htm'  = 'text/html; charset=utf-8'
+    '.js'   = 'application/javascript; charset=utf-8'
+    '.mjs'  = 'application/javascript; charset=utf-8'
+    '.css'  = 'text/css; charset=utf-8'
+    '.json' = 'application/json; charset=utf-8'
+    '.webmanifest' = 'application/manifest+json; charset=utf-8'
+    '.svg'  = 'image/svg+xml'
+    '.png'  = 'image/png'
+    '.jpg'  = 'image/jpeg'
+    '.jpeg' = 'image/jpeg'
+    '.ico'  = 'image/x-icon'
+    '.woff2' = 'font/woff2'
+    '.woff' = 'font/woff'
+    '.ttf'  = 'font/ttf'
+}
+
+$listener = $null
+$baseUrl = $null
+foreach ($port in 18573..18595) {
+    $candidate = New-Object System.Net.HttpListener
+    $prefix = "http://127.0.0.1:$port/"
+    $candidate.Prefixes.Add($prefix)
+    try {
+        $candidate.Start()
+        $listener = $candidate
+        $baseUrl = $prefix
+        break
+    } catch {
+        try { $candidate.Close() } catch {}
+    }
+}
+
+if (-not $listener) {
+    Write-Error "Unable to start local HTTP server on ports 18573-18595."
+    exit 1
+}
+
+Write-Host "[OK] HeatShield AI local server running at $baseUrl"
+Write-Host "[*] Keep this window open while using HeatShield AI (Ctrl+C to quit)."
+Start-Process $baseUrl
+
+try {
+    while ($listener.IsListening) {
+        try {
+            $ctx = $listener.GetContext()
+        } catch {
+            break
+        }
+        try {
+            $reqPath = $ctx.Request.Url.AbsolutePath
+            if ($reqPath -like '/api/*') {
+                $errBytes = [System.Text.Encoding]::UTF8.GetBytes('{"error":"offline_local_bundle","offline":true}')
+                $ctx.Response.StatusCode = 404
+                $ctx.Response.ContentType = 'application/json; charset=utf-8'
+                $ctx.Response.ContentLength64 = $errBytes.Length
+                $ctx.Response.OutputStream.Write($errBytes, 0, $errBytes.Length)
+                $ctx.Response.OutputStream.Close()
+                continue
+            }
+
+            $rel = $reqPath.TrimStart('/')
+            if ([string]::IsNullOrWhiteSpace($rel)) { $rel = 'index.html' }
+            $safeRel = $rel -replace '/', [System.IO.Path]::DirectorySeparatorChar
+            $target = [System.IO.Path]::GetFullPath((Join-Path $webRoot $safeRel))
+
+            if (-not $target.StartsWith($webRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $ctx.Response.StatusCode = 403
+                $ctx.Response.OutputStream.Close()
+                continue
+            }
+
+            if (-not (Test-Path $target -PathType Leaf)) {
+                if (-not [System.IO.Path]::HasExtension($target)) {
+                    $target = Join-Path $webRoot 'index.html'
+                }
+            }
+
+            if (-not (Test-Path $target -PathType Leaf)) {
+                $ctx.Response.StatusCode = 404
+                $ctx.Response.OutputStream.Close()
+                continue
+            }
+
+            $ext = [System.IO.Path]::GetExtension($target).ToLowerInvariant()
+            $mime = if ($mimeTypes.ContainsKey($ext)) { $mimeTypes[$ext] } else { 'application/octet-stream' }
+            $bytes = [System.IO.File]::ReadAllBytes($target)
+            $ctx.Response.StatusCode = 200
+            $ctx.Response.ContentType = $mime
+            $ctx.Response.Headers['Cache-Control'] = 'no-cache'
+            $ctx.Response.ContentLength64 = $bytes.Length
+            $ctx.Response.OutputStream.Write($bytes, 0, $bytes.Length)
+            $ctx.Response.OutputStream.Close()
+        } catch {
+            try { $ctx.Response.Abort() } catch {}
+        }
+    }
+} finally {
+    $listener.Stop()
+    $listener.Close()
+}
+"""
+
     bat_launcher = """@echo off
+setlocal
 title HeatShield AI - Desktop Command Center
 echo ===================================================================
 echo             HeatShield AI - Desktop Command Center
@@ -616,35 +1172,79 @@ echo   Unsupervised Spatiotemporal Climate Intelligence Platform
 echo                 Project No. 25 - SIH26083
 echo ===================================================================
 echo.
-echo Starting local offline high-performance HTTP web server...
 cd /d "%~dp0"
-start "" "http://localhost:5173"
-python -m http.server 5173 --directory web
-if %errorlevel% neq 0 (
-    echo Python not found in PATH, launching standalone web viewer directly...
-    start "" "%~dp0web\\index.html"
+
+where python >nul 2>nul
+if %errorlevel% equ 0 (
+    echo Starting local HTTP server via Python...
+    python "%~dp0server.py"
+    goto :done
 )
-pause
+
+where py >nul 2>nul
+if %errorlevel% equ 0 (
+    echo Starting local HTTP server via Python Launcher...
+    py -3 "%~dp0server.py"
+    goto :done
+)
+
+echo Python not detected; starting built-in Windows PowerShell local server...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0server.ps1"
+
+:done
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Local server could not start automatically.
+    echo Ensure you extracted ALL files from the ZIP archive before launching.
+    pause
+)
 """
-    
+
+    sh_launcher = """#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+echo "==================================================================="
+echo "            HeatShield AI - Desktop Command Center"
+echo "==================================================================="
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "$SCRIPT_DIR/server.py"
+elif command -v python >/dev/null 2>&1; then
+  exec python "$SCRIPT_DIR/server.py"
+else
+  echo "Python 3 is required on macOS/Linux. Install Python 3 or run:"
+  echo "  python3 -m http.server 18573 --directory \"$SCRIPT_DIR/web\""
+  exit 1
+fi
+"""
+
     readme = """# HeatShield AI — Desktop Standalone Command Center
-## Version 2.0.4 (Windows, macOS, Linux)
+## Version 2.0.5 (Windows, macOS, Linux)
 
 ### Instant 1-Click Launch:
-1. Double-click `HeatShield-AI.bat` (Windows) or open `web/index.html` in Chrome/Edge/Firefox.
-2. The full command center launches locally with zero internet dependency required.
+1. **Extract ALL files** from this ZIP archive first (do not launch inside ZIP preview).
+2. **Windows:** Double-click `HeatShield-AI.bat`.
+   - Uses Python if installed, or automatically falls back to Windows' built-in PowerShell server (`server.ps1`) — zero extra installation needed.
+3. **macOS / Linux:** Open Terminal in the extracted folder and run `./launch-mac-linux.sh`.
+4. Note: Do **not** open `web/index.html` directly via `file://` because modern browsers block interactive JS modules and maps on raw `file://` URLs.
 
 ### Features Included:
+- Hybrid Live + Offline Vector Map: automatically fails over across CARTO Dark / CARTO Voyager / Esri World Street / OSM tiles when online, and renders an crisp built-in India/world vector map offline.
 - All 46 synoptic stations with multi-year observations (2022–2025).
 - Continuous 4-station IDW spatial interpolation engine (<0.6ms execution).
 - All 787 districts and 650,000 villages directory.
 - Complete Research & Viva Defense Lab (RQ1–RQ6).
-- Exportable executive briefings and CSV tabular datasets.
 """
-    
+
     frontend_dist = os.path.join(PROJECT_ROOT, "frontend", "dist")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("HeatShield-AI.bat", bat_launcher)
+        zf.writestr("HeatShield-AI.bat", bat_launcher.replace("\n", "\r\n"))
+        zf.writestr("server.py", server_py)
+        zf.writestr("server.ps1", server_ps1.replace("\n", "\r\n"))
+
+        sh_info = zipfile.ZipInfo("launch-mac-linux.sh")
+        sh_info.external_attr = 0o755 << 16
+        zf.writestr(sh_info, sh_launcher.replace("\r\n", "\n"))
+
         zf.writestr("README.md", readme)
         if os.path.exists(frontend_dist):
             for root, _, files in os.walk(frontend_dist):
@@ -656,10 +1256,10 @@ pause
                     zf.write(full_p, arcname=f"web/{rel_p}")
         else:
             zf.writestr("web/index.html", "<!doctype html><html><body><h1>HeatShield AI Desktop</h1></body></html>")
-            
+
         zf.writestr("data/noaa_gsod_46_stations_2022_2025.csv", "station_id,name,lat,lon,temp,hi\n42182099999,NEW DELHI,28.585,77.206,42.4,46.8\n")
 
-    print(f"[OK] Desktop Windows Bundle created: {zip_path} ({os.path.getsize(zip_path):,} bytes)")
+    print(f"[OK] Desktop Standalone Bundle created: {zip_path} ({os.path.getsize(zip_path):,} bytes)")
     return zip_path
 
 def build_master_offline_suite():
@@ -667,7 +1267,7 @@ def build_master_offline_suite():
     print(f"\n[*] Building Master Offline Research Suite: {zip_path}...")
     
     readme = """# HeatShield AI — Complete Master Offline Research Suite
-Version 2.0.4 | SIH26083
+Version 2.0.5 | SIH26083
 
 This archive contains the entire standalone offline ecosystem:
 - Full Python Machine Learning Pipeline (K-Means, GMM, PCA, UMAP, Isolation Forest, Markov Transition Matrix).
@@ -716,7 +1316,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(apk)}",
                 "sizeBytes": os.path.getsize(apk),
                 "sizeFormatted": _format_size(apk),
-                "version": "2.0.4",
+                "version": "2.0.5",
                 "sha256": generate_checksum(apk),
                 "format": "APK (Native Signed Package)",
                 "compatibility": "Android 7.0 to 15 (Universal ARM64, ARMv7, x86_64)"
@@ -726,7 +1326,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(ios)}",
                 "sizeBytes": os.path.getsize(ios),
                 "sizeFormatted": _format_size(ios),
-                "version": "2.0.4",
+                "version": "2.0.5",
                 "sha256": generate_checksum(ios),
                 "format": "Apple Configuration Profile (.mobileconfig)",
                 "compatibility": "iOS 15.0+, iPadOS 15.0+, macOS Monterey+"
@@ -736,7 +1336,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(wear)}",
                 "sizeBytes": os.path.getsize(wear),
                 "sizeFormatted": _format_size(wear),
-                "version": "2.0.4",
+                "version": "2.0.5",
                 "sha256": generate_checksum(wear),
                 "format": "Wear OS Native Signed APK",
                 "compatibility": "Wear OS 3.0+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3"
@@ -746,7 +1346,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(desktop)}",
                 "sizeBytes": os.path.getsize(desktop),
                 "sizeFormatted": _format_size(desktop),
-                "version": "2.0.4",
+                "version": "2.0.5",
                 "sha256": generate_checksum(desktop),
                 "format": "Windows / macOS Portable (.zip)",
                 "compatibility": "Windows 10/11, macOS 12+, Linux x86_64"
@@ -756,7 +1356,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(master)}",
                 "sizeBytes": os.path.getsize(master),
                 "sizeFormatted": _format_size(master),
-                "version": "2.0.4",
+                "version": "2.0.5",
                 "sha256": generate_checksum(master),
                 "format": "Full Master Research Package (.zip)",
                 "compatibility": "All Platforms (Universal Offline Bundle)"

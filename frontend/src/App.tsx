@@ -844,7 +844,15 @@ export function App() {
                 <h2 className="text-xl font-bold text-white">Live Regional Priority Heat Map</h2>
                 <p className="text-xs text-slate-400">46 Synoptic Stations across India with Vulnerability Clustered Overlays</p>
               </div>
-              <PriorityMap stations={mapStations} activeK={activeK} />
+              <PriorityMap
+                stations={mapStations}
+                activeK={activeK}
+                userLat={currentLat}
+                userLon={currentLon}
+                locationName={locationName}
+                heatIndexC={feelsLikeC}
+                riskLevel={riskLevel}
+              />
             </div>
           )}
 
@@ -1096,7 +1104,15 @@ export function App() {
                     />
 
                     {/* 7. Regional Priority Map */}
-                    <PriorityMap stations={mapStations} activeK={activeK} />
+                    <PriorityMap
+                stations={mapStations}
+                activeK={activeK}
+                userLat={currentLat}
+                userLon={currentLon}
+                locationName={locationName}
+                heatIndexC={feelsLikeC}
+                riskLevel={riskLevel}
+              />
 
                     {/* 8. Temporal Profile Transitions */}
                     <TemporalAnalysisView
@@ -1206,7 +1222,17 @@ export function App() {
                 </button>
               </div>
 
-              {activeTab === 'map' && <PriorityMap stations={mapStations} activeK={activeK} />}
+              {activeTab === 'map' && (
+                <PriorityMap
+                  stations={mapStations}
+                  activeK={activeK}
+                  userLat={currentLat}
+                  userLon={currentLon}
+                  locationName={locationName}
+                  heatIndexC={feelsLikeC}
+                  riskLevel={riskLevel}
+                />
+              )}
               {activeTab === 'profiles' && <VulnerabilityProfilesView profiles={profiles} />}
               {activeTab === 'insights' && (
                 <AIInsightsView insights={aiInsights} onExportReport={handleOpenExportModal} />

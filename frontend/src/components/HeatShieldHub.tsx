@@ -864,6 +864,12 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => onNavigateTab && onNavigateTab('map')}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-blue-600/25 text-blue-300 border border-blue-500/40 rounded-lg hover:bg-blue-600/45 transition flex items-center gap-1"
+                >
+                  <span>Live Map</span>
+                </button>
+                <button
                   onClick={() => onNavigateTab && onNavigateTab('villages')}
                   className="px-2.5 py-1 text-[11px] font-bold bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 rounded-lg hover:bg-emerald-600/50 transition flex items-center gap-1"
                 >
@@ -903,7 +909,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             </div>
 
             {/* SVG India Map Simulation with All 46 Stations Placed (Expanded Height) */}
-            <div className="mt-3 relative w-full h-72 sm:h-80 bg-[#0B132B]/80 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center select-none">
+            <div
+              className={`mt-3 relative w-full ${
+                isMapExpanded ? 'h-[440px]' : 'h-72 sm:h-80'
+              } bg-[#0B132B]/80 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center select-none transition-all duration-300`}
+            >
               
               <svg
                 viewBox={getViewBox()}

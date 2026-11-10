@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import {
   Shield,
   Maximize2,
   MapPin,
   X,
-  ChevronRight
+  ChevronRight,
+  LocateFixed
 } from 'lucide-react';
 import { OFFLINE_STATIONS } from '../../utils/offlineEngine';
+import { ResilientMapLayers, MapResizeObserver } from '../shared/ResilientMapLayers';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface MobileMapProps {
   currentLat: number | null;
@@ -18,31 +21,41 @@ interface MobileMapProps {
   selectedStationId: string;
   onSelectStation: (stationId: string) => void;
   isFullscreen?: boolean;
+  isTabView?: boolean;
   onToggleFullscreen?: () => void;
   locationUnavailable?: boolean;
 }
 
-// Controller to guarantee Leaflet invalidates and centers on mobile
-function MobileMapController({ center, zoom }: { center: [number, number]; zoom: number }) {
+// Synchronize center/zoom ONLY when coordinates, zoom, or explicit recenter nonce change
+function MobileMapController({
+  lat,
+  lon,
+  zoom,
+  recenterNonce
+}: {
+  lat: number;
+  lon: number;
+  zoom: number;
+  recenterNonce: number;
+}) {
   const map = useMap();
+  const prevTargetRef = useRef<{ lat: number; lon: number; zoom: number; nonce: number } | null>(null);
 
   useEffect(() => {
-    map.invalidateSize();
-    const t1 = setTimeout(() => map.invalidateSize(), 150);
-    const t2 = setTimeout(() => map.invalidateSize(), 400);
-    const t3 = setTimeout(() => map.invalidateSize(), 800);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, [map]);
+    const prev = prevTargetRef.current;
+    if (
+      !prev ||
+      prev.lat !== lat ||
+      prev.lon !== lon ||
+      prev.zoom !== zoom ||
+      prev.nonce !== recenterNonce
+    ) {
+      map.setView([lat, lon], zoom, { animate: prev !== null });
+      prevTargetRef.current = { lat, lon, zoom, nonce: recenterNonce };
+    }
+  }, [lat, lon, zoom, recenterNonce, map]);
 
-  useEffect(() => {
-    map.setView(center, zoom);
-  }, [center, zoom, map]);
-
-  return null;
+  return <MapResizeObserver />;
 }
 
 export const MobileMap: React.FC<MobileMapProps> = ({
@@ -54,6 +67,7 @@ export const MobileMap: React.FC<MobileMapProps> = ({
   selectedStationId,
   onSelectStation,
   isFullscreen = false,
+  isTabView = false,
   onToggleFullscreen,
   locationUnavailable = false
 }) => {
@@ -61,6 +75,10 @@ export const MobileMap: React.FC<MobileMapProps> = ({
   const [mapLayer, setMapLayer] = useState<'heat_risk' | 'clusters' | 'anomalies' | 'stations'>('heat_risk');
   const [inspectedStation, setInspectedStation] = useState<any | null>(null);
   const [inspectUserLocation, setInspectUserLocation] = useState<boolean>(false);
+  const [internalFullscreen, setInternalFullscreen] = useState<boolean>(false);
+  const [recenterNonce, setRecenterNonce] = useState<number>(0);
+
+  const effectiveFullscreen = isFullscreen || internalFullscreen;
 
   const hasVerifiedLocation =
     !locationUnavailable &&
@@ -71,9 +89,8 @@ export const MobileMap: React.FC<MobileMapProps> = ({
     !(currentLat === 0 && currentLon === 0);
 
   // Use India geographic overview center ONLY for framing viewport when user location is unavailable
-  const mapCenter: [number, number] = hasVerifiedLocation
-    ? [currentLat as number, currentLon as number]
-    : [22.5, 78.5];
+  const centerLat = hasVerifiedLocation ? (currentLat as number) : 22.5;
+  const centerLon = hasVerifiedLocation ? (currentLon as number) : 78.5;
   const mapZoom = hasVerifiedLocation ? 7 : 4;
 
   // Project (lat, lon) to SVG (x, y) coordinates for radar view
@@ -87,22 +104,36 @@ export const MobileMap: React.FC<MobileMapProps> = ({
     ? project(currentLat as number, currentLon as number)
     : null;
 
+  const containerHeightClass = effectiveFullscreen
+    ? 'h-[70vh] min-h-[420px]'
+    : isTabView
+    ? 'h-[60vh] min-h-[380px]'
+    : 'h-72 min-h-[288px]';
+
+  const handleFullscreenClick = () => {
+    if (onToggleFullscreen) {
+      onToggleFullscreen();
+    } else {
+      setInternalFullscreen((prev) => !prev);
+    }
+  };
+
   return (
     <div
       className={`rounded-2xl bg-[#0F172E] border border-slate-800 p-4 shadow-lg space-y-3.5 relative ${
-        isFullscreen ? 'fixed inset-0 z-50 rounded-none bg-[#090F1F] p-4 overflow-y-auto' : ''
+        effectiveFullscreen ? 'fixed inset-0 z-50 rounded-none bg-[#090F1F] p-4 overflow-y-auto' : ''
       }`}
     >
       {/* Map Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="w-4 h-4 text-rose-400" />
-          <h3 className="text-xs font-black uppercase tracking-wider text-white">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Shield className="w-4 h-4 text-rose-400 shrink-0" />
+          <h3 className="text-xs font-black uppercase tracking-wider text-white truncate">
             Regional Heat &amp; Station Map
           </h3>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Mode Switcher */}
           <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-[10px]">
             <button
@@ -129,16 +160,14 @@ export const MobileMap: React.FC<MobileMapProps> = ({
             </button>
           </div>
 
-          {onToggleFullscreen && (
-            <button
-              type="button"
-              onClick={onToggleFullscreen}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
-              aria-label="Toggle fullscreen map"
-            >
-              {isFullscreen ? <X className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleFullscreenClick}
+            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition"
+            aria-label="Toggle fullscreen map"
+          >
+            {effectiveFullscreen ? <X className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+          </button>
         </div>
       </div>
 
@@ -167,116 +196,121 @@ export const MobileMap: React.FC<MobileMapProps> = ({
 
       {/* Map Display Container */}
       <div
-        className={`relative w-full ${
-          isFullscreen ? 'h-[68vh]' : 'h-72'
-        } bg-[#080D1D] rounded-2xl border border-slate-800/90 overflow-hidden select-none`}
+        className={`relative w-full ${containerHeightClass} bg-[#070E21] rounded-2xl border border-slate-800/90 overflow-hidden select-none`}
       >
         {viewMode === 'leaflet' ? (
-          /* Interactive Leaflet Map */
-          <MapContainer
-            center={mapCenter}
-            zoom={mapZoom}
-            scrollWheelZoom={true}
-            style={{ height: '100%', width: '100%', borderRadius: '1rem' }}
+          <ErrorBoundary
+            fallbackTitle="Interactive Map Fell Back Safely"
+            fallbackMessage="Switch to Radar view or tap Reload Module to re-initialize the Leaflet canvas."
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <MobileMapController center={mapCenter} zoom={mapZoom} />
+            {/* Interactive Hybrid Online+Offline Leaflet Map */}
+            <MapContainer
+              center={[centerLat, centerLon]}
+              zoom={mapZoom}
+              scrollWheelZoom={true}
+              style={{ height: '100%', width: '100%', borderRadius: '1rem', background: '#070E21' }}
+            >
+              <ResilientMapLayers compact={!isTabView && !effectiveFullscreen} />
+              <MobileMapController
+                lat={centerLat}
+                lon={centerLon}
+                zoom={mapZoom}
+                recenterNonce={recenterNonce}
+              />
 
-            {/* User Location Marker (only rendered when location is verified) */}
-            {hasVerifiedLocation && (
-              <CircleMarker
-                center={[currentLat as number, currentLon as number]}
-                radius={8}
-                pathOptions={{
-                  color: '#ffffff',
-                  weight: 2,
-                  fillColor: '#2563EB',
-                  fillOpacity: 1
-                }}
-                eventHandlers={{
-                  click: () => {
-                    setInspectedStation(null);
-                    setInspectUserLocation(true);
-                  }
-                }}
-              >
-                <Popup>
-                  <div className="p-1 text-slate-900 font-sans text-xs">
-                    <strong className="block text-blue-600 font-bold">Your Location</strong>
-                    <span className="font-semibold text-slate-800">{locationName}</span>
-                    <div className="mt-1 flex items-center justify-between text-[11px] gap-2">
-                      <span>Heat Index: <strong>{heatIndexC.toFixed(1)}°C</strong></span>
-                      <span className="font-bold text-rose-600">{riskLevel}</span>
-                    </div>
-                  </div>
-                </Popup>
-              </CircleMarker>
-            )}
-
-            {/* 46 Station Markers */}
-            {OFFLINE_STATIONS.map((st) => {
-              const isSelected = st.station_id === selectedStationId;
-              let dotColor = '#FFFFFF';
-              if (mapLayer === 'heat_risk') {
-                dotColor = st.color;
-              } else if (mapLayer === 'clusters') {
-                const clusterColors = ['#3B82F6', '#F59E0B', '#EF4444', '#10B981'];
-                dotColor = clusterColors[st.cluster_id % clusterColors.length];
-              } else if (mapLayer === 'anomalies') {
-                dotColor = st.temperature_c >= 42 ? '#EF4444' : '#10B981';
-              }
-
-              return (
+              {/* User Location Marker (only rendered when location is verified) */}
+              {hasVerifiedLocation && (
                 <CircleMarker
-                  key={st.station_id}
-                  center={[st.latitude, st.longitude]}
-                  radius={isSelected ? 9 : 6}
+                  center={[currentLat as number, currentLon as number]}
+                  radius={8}
                   pathOptions={{
-                    color: isSelected ? '#3B82F6' : '#ffffff',
-                    weight: isSelected ? 3 : 1.5,
-                    fillColor: dotColor,
-                    fillOpacity: 0.9
+                    color: '#ffffff',
+                    weight: 2,
+                    fillColor: '#2563EB',
+                    fillOpacity: 1
                   }}
                   eventHandlers={{
                     click: () => {
-                      setInspectUserLocation(false);
-                      setInspectedStation(st);
+                      setInspectedStation(null);
+                      setInspectUserLocation(true);
                     }
                   }}
                 >
                   <Popup>
-                    <div className="p-1 text-slate-900 font-sans text-xs min-w-[160px]">
-                      <h4 className="font-bold text-slate-950 text-sm leading-tight">{st.station_name}</h4>
-                      <p className="text-[10px] text-slate-500 mb-1.5">ID: {st.station_id}</p>
-                      <div className="grid grid-cols-2 gap-1 text-[11px] bg-slate-50 p-1.5 rounded mb-2 border border-slate-200">
-                        <div>Temp: <strong>{st.temperature_c}°C</strong></div>
-                        <div>Heat Index: <strong>{st.heat_index_c}°C</strong></div>
-                        <div className="col-span-2 font-bold" style={{ color: st.color }}>
-                          {st.vulnerability_tier} Risk
-                        </div>
+                    <div className="p-1 text-slate-900 font-sans text-xs">
+                      <strong className="block text-blue-600 font-bold">Your Location</strong>
+                      <span className="font-semibold text-slate-800">{locationName}</span>
+                      <div className="mt-1 flex items-center justify-between text-[11px] gap-2">
+                        <span>Heat Index: <strong>{heatIndexC.toFixed(1)}°C</strong></span>
+                        <span className="font-bold text-rose-600">{riskLevel}</span>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onSelectStation(st.station_id);
-                          setInspectedStation(null);
-                        }}
-                        className="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-bold"
-                      >
-                        Set As Active
-                      </button>
                     </div>
                   </Popup>
                 </CircleMarker>
-              );
-            })}
-          </MapContainer>
+              )}
+
+              {/* 46 Station Markers */}
+              {OFFLINE_STATIONS.map((st) => {
+                const isSelected = st.station_id === selectedStationId;
+                let dotColor = '#FFFFFF';
+                if (mapLayer === 'heat_risk') {
+                  dotColor = st.color;
+                } else if (mapLayer === 'clusters') {
+                  const clusterColors = ['#3B82F6', '#F59E0B', '#EF4444', '#10B981'];
+                  dotColor = clusterColors[st.cluster_id % clusterColors.length];
+                } else if (mapLayer === 'anomalies') {
+                  dotColor = st.temperature_c >= 42 ? '#EF4444' : '#10B981';
+                }
+
+                return (
+                  <CircleMarker
+                    key={st.station_id}
+                    center={[st.latitude, st.longitude]}
+                    radius={isSelected ? 9 : 6}
+                    pathOptions={{
+                      color: isSelected ? '#3B82F6' : '#ffffff',
+                      weight: isSelected ? 3 : 1.5,
+                      fillColor: dotColor,
+                      fillOpacity: 0.9
+                    }}
+                    eventHandlers={{
+                      click: () => {
+                        setInspectUserLocation(false);
+                        setInspectedStation(st);
+                      }
+                    }}
+                  >
+                    <Popup>
+                      <div className="p-1 text-slate-900 font-sans text-xs min-w-[160px]">
+                        <h4 className="font-bold text-slate-950 text-sm leading-tight">{st.station_name}</h4>
+                        <p className="text-[10px] text-slate-500 mb-1.5">ID: {st.station_id}</p>
+                        <div className="grid grid-cols-2 gap-1 text-[11px] bg-slate-50 p-1.5 rounded mb-2 border border-slate-200">
+                          <div>Temp: <strong>{st.temperature_c}°C</strong></div>
+                          <div>Heat Index: <strong>{st.heat_index_c}°C</strong></div>
+                          <div className="col-span-2 font-bold" style={{ color: st.color }}>
+                            {st.vulnerability_tier} Risk
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSelectStation(st.station_id);
+                            setInspectedStation(null);
+                          }}
+                          className="w-full py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-bold"
+                        >
+                          Set As Active
+                        </button>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                );
+              })}
+            </MapContainer>
+          </ErrorBoundary>
         ) : (
           /* SVG Thermal Radar View */
-          <svg viewBox="0 0 400 420" className="w-full h-full max-h-96 object-contain">
+          <svg viewBox="0 0 400 420" className="w-full h-full object-contain">
             <defs>
               <linearGradient id="mobileHeatGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#EF4444" stopOpacity="0.85" />
@@ -360,6 +394,19 @@ export const MobileMap: React.FC<MobileMapProps> = ({
               </g>
             )}
           </svg>
+        )}
+
+        {/* Recenter Button Overlay (Leaflet mode) */}
+        {viewMode === 'leaflet' && (
+          <button
+            type="button"
+            onClick={() => setRecenterNonce((n) => n + 1)}
+            title={hasVerifiedLocation ? 'Recenter on your location' : 'Recenter India view'}
+            aria-label="Recenter map"
+            className="absolute bottom-10 right-2.5 z-[1000] p-2 rounded-xl bg-slate-950/90 hover:bg-slate-800 border border-slate-700/80 text-cyan-300 shadow-lg transition cursor-pointer"
+          >
+            <LocateFixed className="w-4 h-4" />
+          </button>
         )}
 
         {/* Legend Overlay */}

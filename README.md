@@ -33,7 +33,7 @@ Modern extreme heatwaves present complex thermodynamic hazards that cannot be ca
    - **RQ5 (Feature Ablation)**: Systematically tests 6 feature permutations, proving moisture exclusion causes a catastrophic $-26.1\%$ collapse in cluster separation ($F_{\text{RH}} = 342.2$).
    - **RQ6 (Emerging Hotspots)**: Couples spatial IDW ($k=4, p=2.0$) with local anomaly scores to reveal emerging danger zones ($EHI$).
 2. **Citizen Heat-Safety Companion**: Multi-tier location acquisition (Native Android GPS → W3C GNSS → Wi-Fi/Cell → direct public IP fallback with explicit `unavailable` state and zero silent hardcoded city defaults), reverse geocoding via Nominatim/BigDataCloud, live Open-Meteo weather with explicit source provenance separation, Rothfusz Heat Index, 6 vulnerability personas, and clinical triage.
-3. **Offline-Resilient IDW Engine**: Sub-millisecond spatial interpolation ($0.36\text{ms}$ median / $0.39\text{ms}$ mean in latest Python validation; $<1\text{ms}$ target) with Service Worker caching for static shells (`NO_CACHE_API_PREFIXES` ensures dynamic geo/weather endpoints never replay stale `is_live: true` responses offline) and cross-platform Android/Wear OS/Desktop/iOS download bundles.
+3. **Offline-Resilient IDW & Hybrid Vector Map Engine**: Sub-millisecond spatial interpolation ($0.36\text{ms}$ median / $0.41\text{ms}$ mean in latest Python validation; $<1\text{ms}$ target), built-in HTML5 Canvas `OfflineVectorGridLayer` with 4-provider live tile failover (CARTO Dark/Voyager, Esri, OSM) for web, Desktop standalone loopback server (`server.py` / `server.ps1`), and native Android APK (`LocalAssetServer` on `127.0.0.1` + `HeatShieldNativeGps` bridge), alongside Service Worker caching (`NO_CACHE_API_PREFIXES` ensures dynamic geo/weather endpoints never replay stale `is_live: true` responses offline).
 
 ---
 
@@ -165,7 +165,7 @@ source .venv/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the complete test suite (50 backend, safety, geo, and provenance tests)
+# Run the complete test suite (52 backend, safety, geo, provenance, and map/bundle tests)
 python -m pytest tests/ -v
 
 # Start the FastAPI server
@@ -194,10 +194,10 @@ npm run dev
 
 ## 🧪 Running Automated Verification
 
-Execute the 50-test automated regression suite covering the ML pipeline, biometeorological 5-tier safety matrix, 787-district geo registry, trusted-proxy security, reverse geocoding, and live/offline provenance separation:
+Execute the 52-test automated regression suite covering the ML pipeline, biometeorological 5-tier safety matrix, 787-district geo registry, trusted-proxy security, reverse geocoding, live/offline provenance separation, offline vector map resilience, and signed APK/Desktop package integrity:
 
 ```bash
-# Run full pytest suite (50 tests across 5 test modules)
+# Run full pytest suite (52 tests across 5 test modules)
 .venv\Scripts\python.exe -m pytest tests/ -v
 
 # Run end-to-end release qualification gate (10/10 checks: pytest + LOSOCV + benchmark + oxlint + vite build + SW + GNSS)
@@ -210,9 +210,9 @@ tests/test_pipeline.py                 8/8 passed
 tests/test_safety_matrix.py           12/12 passed
 tests/test_geo_store.py                8/8 passed
 tests/test_climate_intelligence.py     7/7 passed
-tests/test_geo_and_weather_fixes.py   15/15 passed
+tests/test_geo_and_weather_fixes.py   17/17 passed
 --------------------------------------------------
-Total Pytest Suite:                   50/50 PASSED
+Total Pytest Suite:                   52/52 PASSED
 Master Release Gate (release_validation.py): 10/10 [QUALIFIED]
 Frontend Lint & Build:                oxlint (0 errors) + tsc -b && vite build
 ```

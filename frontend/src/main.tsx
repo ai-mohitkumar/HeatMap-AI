@@ -10,10 +10,16 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// Register PWA Service Worker for 100% offline capability
-if ('serviceWorker' in navigator) {
+// Register PWA Service Worker for web offline capability (skip file:// and native Android WebView bundle)
+const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+const isNativeAndroidWebView =
+  typeof window !== 'undefined' &&
+  Boolean((window as unknown as { HeatShieldNativeGps?: unknown }).HeatShieldNativeGps);
+
+if ('serviceWorker' in navigator && !isFileProtocol && !isNativeAndroidWebView) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
+    const swUrl = `${import.meta.env.BASE_URL || './'}sw.js`;
+    navigator.serviceWorker.register(swUrl)
       .then((reg) => {
         console.log('HeatShield PWA Service Worker active:', reg.scope);
         // Check for updates immediately

@@ -455,3 +455,98 @@ def test_cgnat_client_ip_marked_non_routable(monkeypatch):
     assert data["status"] == "unavailable"
     assert data["is_default"] is False
     assert data["latitude"] is None
+
+
+# ---------------------------------------------------------------------------
+# Offline/Online Map Resilience & Downloadable App Bundle Checks
+# ---------------------------------------------------------------------------
+
+def test_frontend_relative_assets_and_resilient_map_layers():
+    """
+    Frontend index.html must use relative ./ asset links (no external unpkg dependency)
+    and both MobileMap & PriorityMap must mount ResilientMapLayers + MapResizeObserver.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    index_html = (root / "frontend" / "index.html").read_text(encoding="utf-8")
+    assert 'href="./favicon.svg"' in index_html
+    assert 'href="./manifest.json"' in index_html
+    assert 'href="./leaflet.css"' in index_html
+    assert "unpkg.com" not in index_html
+
+    main_tsx = (root / "frontend" / "src" / "main.tsx").read_text(encoding="utf-8")
+    assert "HeatShieldNativeGps" in main_tsx
+    assert "BASE_URL" in main_tsx
+
+    resilient = (root / "frontend" / "src" / "components" / "shared" / "ResilientMapLayers.tsx").read_text(encoding="utf-8")
+    for required_symbol in [
+        "OfflineVectorGridLayer",
+        "MapResizeObserver",
+        "carto_dark",
+        "carto_voyager",
+        "esri_street",
+        "osm_standard",
+    ]:
+        assert required_symbol in resilient
+
+    for map_file in [
+        root / "frontend" / "src" / "components" / "mobile" / "MobileMap.tsx",
+        root / "frontend" / "src" / "components" / "PriorityMap.tsx",
+    ]:
+        src = map_file.read_text(encoding="utf-8")
+        assert "ResilientMapLayers" in src
+        assert "MapResizeObserver" in src
+
+
+def test_download_package_builder_and_manifest_integrity():
+    """
+    Verify APK/Desktop builder includes loopback asset server, network security config,
+    User-Agent cleanups, Coarse/Fine location handling, and valid artifact SHA-256s.
+    """
+    import hashlib
+    import zipfile
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    builder_src = (root / "scripts" / "build_download_packages.py").read_text(encoding="utf-8")
+    for required_token in [
+        "LocalAssetServer",
+        "network_security_config",
+        "replace(\"; wv)\", \")\")",
+        "ACCESS_COARSE_LOCATION",
+        "shouldOverrideUrlLoading",
+        "server.ps1",
+        "server.py",
+        "launch-mac-linux.sh",
+    ]:
+        assert required_token in builder_src, f"Missing {required_token} in build_download_packages.py"
+
+    downloads_dir = root / "frontend" / "public" / "downloads"
+    manifest_path = downloads_dir / "downloads-manifest.json"
+    if manifest_path.exists():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        pkgs = manifest.get("packages", {})
+        assert set(pkgs.keys()) >= {"android", "ios", "smartwatch", "desktop", "master"}
+        for key, meta in pkgs.items():
+            pkg_file = downloads_dir / meta["fileName"]
+            assert pkg_file.exists(), f"Missing downloadable artifact for {key}: {pkg_file}"
+            digest = hashlib.sha256(pkg_file.read_bytes()).hexdigest()
+            assert digest == meta["sha256"], f"SHA-256 mismatch for {meta['fileName']}"
+
+        apk_file = downloads_dir / pkgs["android"]["fileName"]
+        with zipfile.ZipFile(apk_file, "r") as zf:
+            names = set(zf.namelist())
+            assert "AndroidManifest.xml" in names
+            assert "classes.dex" in names
+            assert "res/xml/network_security_config.xml" in names
+            assert "assets/web/index.html" in names
+
+        desktop_file = downloads_dir / pkgs["desktop"]["fileName"]
+        with zipfile.ZipFile(desktop_file, "r") as zf:
+            names = set(zf.namelist())
+            assert "HeatShield-AI.bat" in names
+            assert "server.py" in names
+            assert "server.ps1" in names
+            assert "launch-mac-linux.sh" in names
+            assert "web/index.html" in names
