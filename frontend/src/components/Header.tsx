@@ -310,7 +310,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <div>
                   <div className="p-2 bg-slate-900/90 border-b border-slate-800 text-[10px] uppercase font-bold text-slate-400 flex items-center justify-between">
                     <span>Villages &amp; Districts of India ({matchingGeoLocations.length})</span>
-                    <span className="text-[9px] text-emerald-400">Continuous IDW Live</span>
+                    <span className="text-[9px] text-amber-400">Offline IDW Baseline</span>
                   </div>
                   <div className="divide-y divide-slate-800/60">
                     {matchingGeoLocations.map((geo, idx) => {

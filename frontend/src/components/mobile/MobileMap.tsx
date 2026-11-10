@@ -10,8 +10,8 @@ import {
 import { OFFLINE_STATIONS } from '../../utils/offlineEngine';
 
 interface MobileMapProps {
-  currentLat: number;
-  currentLon: number;
+  currentLat: number | null;
+  currentLon: number | null;
   locationName: string;
   heatIndexC: number;
   riskLevel: string;
@@ -19,6 +19,7 @@ interface MobileMapProps {
   onSelectStation: (stationId: string) => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  locationUnavailable?: boolean;
 }
 
 // Controller to guarantee Leaflet invalidates and centers on mobile
@@ -53,16 +54,27 @@ export const MobileMap: React.FC<MobileMapProps> = ({
   selectedStationId,
   onSelectStation,
   isFullscreen = false,
-  onToggleFullscreen
+  onToggleFullscreen,
+  locationUnavailable = false
 }) => {
   const [viewMode, setViewMode] = useState<'leaflet' | 'radar'>('leaflet');
   const [mapLayer, setMapLayer] = useState<'heat_risk' | 'clusters' | 'anomalies' | 'stations'>('heat_risk');
   const [inspectedStation, setInspectedStation] = useState<any | null>(null);
   const [inspectUserLocation, setInspectUserLocation] = useState<boolean>(false);
 
-  const centerLat = Number.isFinite(currentLat) && currentLat !== 0 ? currentLat : 22.5;
-  const centerLon = Number.isFinite(currentLon) && currentLon !== 0 ? currentLon : 78.5;
-  const mapCenter: [number, number] = [centerLat, centerLon];
+  const hasVerifiedLocation =
+    !locationUnavailable &&
+    currentLat !== null &&
+    currentLon !== null &&
+    Number.isFinite(currentLat) &&
+    Number.isFinite(currentLon) &&
+    !(currentLat === 0 && currentLon === 0);
+
+  // Use India geographic overview center ONLY for framing viewport when user location is unavailable
+  const mapCenter: [number, number] = hasVerifiedLocation
+    ? [currentLat as number, currentLon as number]
+    : [22.5, 78.5];
+  const mapZoom = hasVerifiedLocation ? 7 : 4;
 
   // Project (lat, lon) to SVG (x, y) coordinates for radar view
   const project = (lat: number, lon: number) => {
@@ -71,7 +83,9 @@ export const MobileMap: React.FC<MobileMapProps> = ({
     return { x, y };
   };
 
-  const userPt = project(centerLat, centerLon);
+  const userPt = hasVerifiedLocation
+    ? project(currentLat as number, currentLon as number)
+    : null;
 
   return (
     <div
@@ -84,7 +98,7 @@ export const MobileMap: React.FC<MobileMapProps> = ({
         <div className="flex items-center gap-2">
           <Shield className="w-4 h-4 text-rose-400" />
           <h3 className="text-xs font-black uppercase tracking-wider text-white">
-            Live Regional Heat Map
+            Regional Heat &amp; Station Map
           </h3>
         </div>
 
@@ -158,10 +172,10 @@ export const MobileMap: React.FC<MobileMapProps> = ({
         } bg-[#080D1D] rounded-2xl border border-slate-800/90 overflow-hidden select-none`}
       >
         {viewMode === 'leaflet' ? (
-          /* Live Interactive Leaflet Map */
+          /* Interactive Leaflet Map */
           <MapContainer
             center={mapCenter}
-            zoom={6}
+            zoom={mapZoom}
             scrollWheelZoom={true}
             style={{ height: '100%', width: '100%', borderRadius: '1rem' }}
           >
@@ -169,36 +183,38 @@ export const MobileMap: React.FC<MobileMapProps> = ({
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <MobileMapController center={mapCenter} zoom={6} />
+            <MobileMapController center={mapCenter} zoom={mapZoom} />
 
-            {/* User GPS Location Marker */}
-            <CircleMarker
-              center={[centerLat, centerLon]}
-              radius={8}
-              pathOptions={{
-                color: '#ffffff',
-                weight: 2,
-                fillColor: '#2563EB',
-                fillOpacity: 1
-              }}
-              eventHandlers={{
-                click: () => {
-                  setInspectedStation(null);
-                  setInspectUserLocation(true);
-                }
-              }}
-            >
-              <Popup>
-                <div className="p-1 text-slate-900 font-sans text-xs">
-                  <strong className="block text-blue-600 font-bold">Your Location</strong>
-                  <span className="font-semibold text-slate-800">{locationName}</span>
-                  <div className="mt-1 flex items-center justify-between text-[11px] gap-2">
-                    <span>Heat Index: <strong>{heatIndexC.toFixed(1)}°C</strong></span>
-                    <span className="font-bold text-rose-600">{riskLevel}</span>
+            {/* User Location Marker (only rendered when location is verified) */}
+            {hasVerifiedLocation && (
+              <CircleMarker
+                center={[currentLat as number, currentLon as number]}
+                radius={8}
+                pathOptions={{
+                  color: '#ffffff',
+                  weight: 2,
+                  fillColor: '#2563EB',
+                  fillOpacity: 1
+                }}
+                eventHandlers={{
+                  click: () => {
+                    setInspectedStation(null);
+                    setInspectUserLocation(true);
+                  }
+                }}
+              >
+                <Popup>
+                  <div className="p-1 text-slate-900 font-sans text-xs">
+                    <strong className="block text-blue-600 font-bold">Your Location</strong>
+                    <span className="font-semibold text-slate-800">{locationName}</span>
+                    <div className="mt-1 flex items-center justify-between text-[11px] gap-2">
+                      <span>Heat Index: <strong>{heatIndexC.toFixed(1)}°C</strong></span>
+                      <span className="font-bold text-rose-600">{riskLevel}</span>
+                    </div>
                   </div>
-                </div>
-              </Popup>
-            </CircleMarker>
+                </Popup>
+              </CircleMarker>
+            )}
 
             {/* 46 Station Markers */}
             {OFFLINE_STATIONS.map((st) => {
@@ -329,31 +345,37 @@ export const MobileMap: React.FC<MobileMapProps> = ({
               );
             })}
 
-            {/* User Location Marker in SVG */}
-            <g
-              transform={`translate(${userPt.x}, ${userPt.y})`}
-              className="cursor-pointer"
-              onClick={() => {
-                setInspectedStation(null);
-                setInspectUserLocation(true);
-              }}
-            >
-              <circle cx="0" cy="0" r="10" fill="#3B82F6" opacity="0.3" className="animate-pulse" />
-              <circle cx="0" cy="0" r="6" fill="#2563EB" stroke="#FFFFFF" strokeWidth="2" />
-            </g>
+            {/* User Location Marker in SVG (only rendered when location is verified) */}
+            {userPt && (
+              <g
+                transform={`translate(${userPt.x}, ${userPt.y})`}
+                className="cursor-pointer"
+                onClick={() => {
+                  setInspectedStation(null);
+                  setInspectUserLocation(true);
+                }}
+              >
+                <circle cx="0" cy="0" r="10" fill="#3B82F6" opacity="0.3" className="animate-pulse" />
+                <circle cx="0" cy="0" r="6" fill="#2563EB" stroke="#FFFFFF" strokeWidth="2" />
+              </g>
+            )}
           </svg>
         )}
 
         {/* Legend Overlay */}
         <div className="absolute bottom-2 left-2 z-[1000] px-2.5 py-1.5 rounded-lg bg-slate-950/85 backdrop-blur border border-slate-800 text-[10px] text-slate-300 flex items-center gap-2.5 shadow-md">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-500/30" /> You
-          </span>
+          {hasVerifiedLocation ? (
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-500/30" /> You
+            </span>
+          ) : (
+            <span className="text-amber-300 font-semibold">No user pin</span>
+          )}
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-amber-400" /> Stations
           </span>
           <span className="flex items-center gap-1 text-slate-400">
-            ({OFFLINE_STATIONS.length} live)
+            ({OFFLINE_STATIONS.length} NOAA baseline)
           </span>
         </div>
       </div>

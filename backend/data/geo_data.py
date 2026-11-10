@@ -28976,21 +28976,52 @@ def resolve_universal_location(
         }
     }
 
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Computes great-circle Haversine distance in kilometers between two WGS84 coordinates."""
+    r_km = 6371.0
+    d_lat = math.radians(lat2 - lat1)
+    d_lon = math.radians(lon2 - lon1)
+    a = (
+        math.sin(d_lat / 2.0) ** 2
+        + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * (math.sin(d_lon / 2.0) ** 2)
+    )
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1.0 - a)))
+    return r_km * c
+
+
+def find_district_by_name(name: str, state_name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Finds a matching district record by name and optional state hint."""
+    if not name:
+        return None
+    target = name.replace(" District", "").replace(" district", "").strip().lower()
+    state_target = state_name.strip().lower() if state_name else None
+
+    candidates = [d for d in DISTRICTS_DATA if d["district_name"].lower() == target]
+    if not candidates:
+        candidates = [d for d in DISTRICTS_DATA if target in d["district_name"].lower() or d["district_name"].lower() in target]
+    if not candidates:
+        return None
+    if state_target:
+        for c in candidates:
+            if c["state_name"].lower() == state_target or state_target in c["state_name"].lower():
+                return c
+    return candidates[0]
+
+
 def find_nearest_district(lat: float, lon: float) -> Dict[str, Any]:
-    """Reverse geocodes (lat, lon) to the closest district centroid in India."""
-    min_dist = float("inf")
+    """Finds the nearest district centroid in India using Haversine distance (advisory/offline fallback)."""
+    min_dist_km = float("inf")
     closest = DISTRICTS_DATA[0]
     for d in DISTRICTS_DATA:
-        dist = math.sqrt((d["latitude"] - lat)**2 + (d["longitude"] - lon)**2)
-        if dist < min_dist:
-            min_dist = dist
+        dist_km = _haversine_km(lat, lon, d["latitude"], d["longitude"])
+        if dist_km < min_dist_km:
+            min_dist_km = dist_km
             closest = d
-    approx_km = round(min_dist * 111.0, 1)
     return {
         "district": closest,
         "state": closest["state_name"],
         "state_code": closest["state_code"],
-        "distance_km": approx_km,
+        "distance_km": round(min_dist_km, 1),
         "latitude": closest["latitude"],
         "longitude": closest["longitude"],
         "climate_zone": closest["climate_zone"]

@@ -7,11 +7,15 @@ nearby cooling centers & hydration points, and community assistance SOS networki
 from fastapi import APIRouter, HTTPException, Path, Query
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
+import logging
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 
 from backend.ml.pipeline import get_pipeline
 from backend.ml.safety_engine import HeatSafetyEngine
+from backend.ml.physics import compute_heat_index_c, classify_heat_index_tier, compute_live_hsi
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/safety", tags=["Public Safety"])
 
@@ -218,16 +222,17 @@ def get_live_all_stations():
 class LocationPredictionRequest(BaseModel):
     latitude: float = Field(..., ge=-90.0, le=90.0, description="Exact user latitude")
     longitude: float = Field(..., ge=-180.0, le=180.0, description="Exact user longitude")
-    accuracy_m: Optional[float] = Field(18.0, description="GPS satellite accuracy in meters")
+    accuracy_m: Optional[float] = Field(None, description="Coordinate accuracy in meters (if available)")
     mode: Optional[str] = Field("online", description="'online' or 'offline'")
+    location_source: Optional[str] = Field("GPS", description="Acquisition source e.g. hardware_gps, network_cellular, ip_geolocation, manual")
 
 
 @router.post("/predict-location", response_model=Dict[str, Any])
 @router.post("/predict/location", response_model=Dict[str, Any])
 def predict_location_heat_risk(payload: LocationPredictionRequest):
     """
-    Location-Aware Heat-Risk Prediction via Exact Device GPS & Multi-Station IDW Spatial Interpolation.
-    Blends live atmospheric observations with NOAA GSOD historical baseline in online mode,
+    Location-Aware Heat-Risk Prediction via Verified Device Coordinates & Multi-Station IDW Baseline.
+    Uses live atmospheric observations in online mode while preserving NOAA GSOD stations as research baseline,
     or runs 100% on local GSOD dataset in offline mode.
     """
     pipeline = get_pipeline()
@@ -243,7 +248,8 @@ def predict_location_heat_risk(payload: LocationPredictionRequest):
         mode=payload.mode or "online",
         k=4,
         p=2.0,
-        profiles_list=pipeline.profiles
+        profiles_list=pipeline.profiles,
+        location_source=payload.location_source or "GPS"
     )
 
 
@@ -254,74 +260,78 @@ def get_live_weather(
 ):
     """
     Fetches real-time atmospheric observations from Open-Meteo's free weather API
-    for any coordinates across India, computes Rothfusz Heat Index & Heat Stress Index (HSI),
-    with seamless automatic fallback to local NOAA GSOD IDW baseline if offline.
+    for any coordinates, computes Rothfusz Heat Index & Heat Stress Index (HSI),
+    with explicitly tagged fallback to local NOAA GSOD IDW baseline if unreachable.
     """
     import urllib.request
     import json
 
     pipeline = get_pipeline()
     df = pipeline.processed_df
+    fallback_reason: Optional[str] = None
 
-    # 1. Attempt live query to Open-Meteo
+    # 1. Attempt live query to Open-Meteo with local timezone
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,surface_pressure,wind_speed_10m"
+            f"current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,surface_pressure,wind_speed_10m&"
+            f"daily=temperature_2m_max&forecast_days=1&timezone=auto"
         )
         req = urllib.request.Request(url, headers={"User-Agent": "HeatShieldAI/1.0"})
-        with urllib.request.urlopen(req, timeout=3.0) as resp:
+        with urllib.request.urlopen(req, timeout=3.5) as resp:
             if resp.status == 200:
-                live = json.loads(resp.read().decode()).get("current", {})
-                t = float(live.get("temperature_2m", 32.0))
-                rh = float(live.get("relative_humidity_2m", 50.0))
-                dewp = float(live.get("dew_point_2m", 18.0))
-                wind = float(live.get("wind_speed_10m", 10.0))
-                pres = float(live.get("surface_pressure", 1010.0))
-                apparent_t = float(live.get("apparent_temperature", t))
+                payload = json.loads(resp.read().decode())
+                live = payload.get("current", {})
+                if live.get("temperature_2m") is not None:
+                    t = float(live["temperature_2m"])
+                    rh = float(live["relative_humidity_2m"]) if live.get("relative_humidity_2m") is not None else 50.0
+                    dewp = float(live["dew_point_2m"]) if live.get("dew_point_2m") is not None else 18.0
+                    wind = float(live["wind_speed_10m"]) if live.get("wind_speed_10m") is not None else 10.0
+                    pres = float(live["surface_pressure"]) if live.get("surface_pressure") is not None else 1010.0
+                    apparent_t = float(live["apparent_temperature"]) if live.get("apparent_temperature") is not None else t
+                    daily_max_list = payload.get("daily", {}).get("temperature_2m_max", [])
+                    daily_max = max(t, float(daily_max_list[0])) if daily_max_list and daily_max_list[0] is not None else t
 
-                tf = t * 1.8 + 32.0
-                hi_f = (-42.379 + 2.04901523 * tf + 10.14333127 * rh - 0.22475541 * tf * rh
-                        - 0.00683783 * (tf**2) - 0.05481717 * (rh**2) + 0.00122874 * (tf**2) * rh
-                        + 0.00085282 * tf * (rh**2) - 0.00000199 * (tf**2) * (rh**2))
-                heat_index_c = round((hi_f - 32.0) / 1.8, 1) if tf >= 80 else round(t, 1)
+                    heat_index_c = compute_heat_index_c(t, rh)
+                    score = compute_live_hsi(t, heat_index_c, daily_max, wind)
+                    tier = classify_heat_index_tier(heat_index_c)
 
-                hsi = 0.5 * t + 0.4 * heat_index_c + 0.1 * (t + 3.5) - 0.05 * wind
-                score = int(max(5, min(99, round(hsi))))
-
-                if heat_index_c <= 29.0:
-                    tier = "Low"
-                elif heat_index_c <= 37.0:
-                    tier = "Moderate"
-                elif heat_index_c <= 44.0:
-                    tier = "High"
-                elif heat_index_c <= 53.0:
-                    tier = "Very High"
-                else:
-                    tier = "Extreme"
-
-                return {
-                    "source": "Open-Meteo Live API",
-                    "status": "online",
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "temperature_c": t,
-                    "relative_humidity_pct": rh,
-                    "dew_point_c": dewp,
-                    "wind_speed_kmh": wind,
-                    "surface_pressure_hpa": pres,
-                    "apparent_temperature_c": apparent_t,
-                    "heat_index_c": heat_index_c,
-                    "heat_stress_index": score,
-                    "risk_tier": tier,
-                    "is_live": True,
-                    "observed_at": live.get("time", datetime.now().isoformat())
-                }
-    except Exception:
-        pass
+                    return {
+                        "source": "Open-Meteo Live API",
+                        "source_type": "live_observation",
+                        "provider": "Open-Meteo",
+                        "status": "online",
+                        "latitude": latitude,
+                        "longitude": longitude,
+                        "temperature_c": round(t, 1),
+                        "relative_humidity_pct": round(rh, 1),
+                        "dew_point_c": round(dewp, 1),
+                        "wind_speed_kmh": round(wind, 1),
+                        "surface_pressure_hpa": round(pres, 1),
+                        "apparent_temperature_c": round(apparent_t, 1),
+                        "heat_index_c": heat_index_c,
+                        "heat_stress_index": score,
+                        "risk_tier": tier,
+                        "is_live": True,
+                        "observed_at": live.get("time"),
+                        "timezone": payload.get("timezone"),
+                        "utc_offset_seconds": payload.get("utc_offset_seconds"),
+                        "fallback_reason": None
+                    }
+                fallback_reason = "Open-Meteo response missing current.temperature_2m"
+                logger.warning("Open-Meteo live weather missing temperature_2m for (%.4f, %.4f)", latitude, longitude)
+            else:
+                fallback_reason = f"Open-Meteo returned HTTP {resp.status}"
+                logger.warning("Open-Meteo live weather HTTP %s for (%.4f, %.4f)", resp.status, latitude, longitude)
+    except Exception as exc:
+        fallback_reason = str(exc)
+        logger.warning("Open-Meteo live weather failed for (%.4f, %.4f): %s", latitude, longitude, exc)
 
     # 2. Offline / fallback using HeatSafetyEngine IDW over GSOD stations
+    if df is None or len(df) == 0:
+        raise HTTPException(status_code=503, detail="ML Pipeline data not initialized.")
+
     fallback = HeatSafetyEngine.predict_location_heat_risk(
         user_lat=latitude,
         user_lon=longitude,
@@ -330,23 +340,33 @@ def get_live_weather(
         k=4,
         p=2.0
     )
-    weather = fallback.get("interpolated_weather", {})
+    weather = fallback.get("weather", {})
+    pred = fallback.get("prediction", {})
+    fb_temp = float(weather.get("temperature", 32.0))
+    fb_rh = float(weather.get("humidity", 50.0))
+    fb_hi = float(weather.get("feels_like", compute_heat_index_c(fb_temp, fb_rh)))
+    fb_tier = classify_heat_index_tier(fb_hi)
+
     return {
-        "source": "Local NOAA GSOD 2022–2025 Multi-Station IDW (Offline Fallback)",
+        "source": "Local NOAA GSOD 2022–2025 Multi-Station IDW (Offline Estimate)",
+        "source_type": "offline_estimate",
+        "provider": "NOAA GSOD IDW",
         "status": "offline_fallback",
         "latitude": latitude,
         "longitude": longitude,
-        "temperature_c": weather.get("temperature_c", 32.0),
-        "relative_humidity_pct": weather.get("relative_humidity_pct", 50.0),
-        "dew_point_c": weather.get("dew_point_c", 18.0),
-        "wind_speed_kmh": weather.get("wind_speed_kmh", 10.0),
-        "surface_pressure_hpa": weather.get("pressure_hpa", 1010.0),
-        "apparent_temperature_c": weather.get("heat_index_c", 32.0),
-        "heat_index_c": weather.get("heat_index_c", 32.0),
-        "heat_stress_index": fallback.get("risk_score", 45),
-        "risk_tier": fallback.get("risk_tier", "Moderate"),
+        "temperature_c": fb_temp,
+        "relative_humidity_pct": fb_rh,
+        "dew_point_c": float(weather.get("dew_point", 18.0)),
+        "wind_speed_kmh": float(weather.get("wind_speed", 10.0)),
+        "surface_pressure_hpa": float(weather.get("pressure", 1010.0)),
+        "apparent_temperature_c": fb_hi,
+        "heat_index_c": fb_hi,
+        "heat_stress_index": int(pred.get("risk_score", 45)),
+        "risk_tier": fb_tier,
         "is_live": False,
-        "observed_at": datetime.now().isoformat()
+        "observed_at": None,
+        "estimated_at": datetime.now(timezone.utc).isoformat(),
+        "fallback_reason": fallback_reason or "Live weather provider unavailable"
     }
 
 
@@ -390,21 +410,24 @@ def get_hourly_heat_forecast(
     min_temp = float(station_rec.get("MIN", base_temp - 6.0))
     base_rh = float(station_rec.get("RH", 55.0))
 
-    # Attempt to query live Open-Meteo hourly forecast
+    # Attempt to query live Open-Meteo hourly forecast in location's local timezone
     live_hourly_map = {}
     data_source_mode = "diurnal_solar_physics"
+    om_timezone: Optional[str] = None
+    fallback_reason: Optional[str] = None
     try:
         import urllib.request
         import json
         om_url = (
             f"https://api.open-meteo.com/v1/forecast?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"hourly=temperature_2m,relative_humidity_2m&forecast_days=1"
+            f"hourly=temperature_2m,relative_humidity_2m&forecast_days=1&timezone=auto"
         )
         req = urllib.request.Request(om_url, headers={"User-Agent": "HeatShieldAI/1.0"})
-        with urllib.request.urlopen(req, timeout=2.5) as resp:
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
             if resp.status == 200:
                 payload = json.loads(resp.read().decode())
+                om_timezone = payload.get("timezone")
                 times = payload.get("hourly", {}).get("time", [])
                 temps = payload.get("hourly", {}).get("temperature_2m", [])
                 rhs = payload.get("hourly", {}).get("relative_humidity_2m", [])
@@ -414,8 +437,15 @@ def get_hourly_heat_forecast(
                         live_hourly_map[hour_int] = (float(t_val), float(rh_val if rh_val is not None else base_rh))
                 if live_hourly_map:
                     data_source_mode = "open_meteo_live_forecast"
-    except Exception:
-        pass
+                else:
+                    fallback_reason = "Open-Meteo hourly response contained no usable points"
+                    logger.warning("Open-Meteo hourly response empty for (%.4f, %.4f)", latitude, longitude)
+            else:
+                fallback_reason = f"Open-Meteo hourly returned HTTP {resp.status}"
+                logger.warning("Open-Meteo hourly HTTP %s for (%.4f, %.4f)", resp.status, latitude, longitude)
+    except Exception as exc:
+        fallback_reason = str(exc)
+        logger.warning("Open-Meteo hourly forecast failed for (%.4f, %.4f): %s", latitude, longitude, exc)
 
     hours_list = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     hourly = []
@@ -430,29 +460,18 @@ def get_hourly_heat_forecast(
             cur_temp = round(min_temp + (max_temp - min_temp) * (solar_factor ** 1.2), 1)
             cur_rh = round(max(15.0, min(95.0, base_rh - (solar_factor * 22.0))), 1)
 
-        T = cur_temp
-        R = cur_rh
-        hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (R * 0.094))
-        if hi >= 80:
-            hi = (-42.379 + 2.04901523 * T + 10.14333127 * R - 0.22475541 * T * R
-                  - 6.837651e-3 * T * T - 5.481717e-2 * R * R + 1.22874e-3 * T * T * R
-                  + 8.5282e-4 * T * R * R - 1.99e-6 * T * T * R * R)
-        heat_index_c = round(max(T, hi) if T >= 27.0 else T, 1)
+        heat_index_c = compute_heat_index_c(cur_temp, cur_rh)
+        tier = classify_heat_index_tier(heat_index_c)
 
-        if heat_index_c <= 29.0:
-            tier = "Low"
+        if tier == "Low":
             advice = "Coolest part of the day. Ideal for outdoor chores."
-        elif heat_index_c <= 37.0:
-            tier = "Moderate"
+        elif tier == "Moderate":
             advice = "Drink 250ml water per hour; light shade advised."
-        elif heat_index_c <= 44.0:
-            tier = "High"
+        elif tier == "High":
             advice = "Laborers take 15-min rest in shade per hour."
-        elif heat_index_c <= 53.0:
-            tier = "Very High"
+        elif tier == "Very High":
             advice = "Danger of heat cramps & exhaustion. Avoid direct sun."
         else:
-            tier = "Extreme"
             advice = "Extreme heatstroke danger. Halt outdoor exertion."
 
         if heat_index_c > peak_hi:
@@ -479,16 +498,8 @@ def get_hourly_heat_forecast(
     end_h = peak_h + 2
     end_str = f"{end_h - 12}:00 PM" if end_h > 12 else f"{end_h}:00 AM"
 
-    if peak_hi <= 29.0:
-        peak_tier = "Low"
-    elif peak_hi <= 37.0:
-        peak_tier = "Moderate"
-    elif peak_hi <= 44.0:
-        peak_tier = "High"
-    elif peak_hi <= 53.0:
-        peak_tier = "Very High"
-    else:
-        peak_tier = "Extreme"
+    peak_tier = classify_heat_index_tier(peak_hi)
+    is_live_forecast = data_source_mode == "open_meteo_live_forecast"
 
     return {
         "station_id": str(station_rec.get("STATION", "UNKNOWN")),
@@ -496,11 +507,15 @@ def get_hourly_heat_forecast(
         "latitude": latitude,
         "longitude": longitude,
         "data_source": data_source_mode,
-        "is_live": data_source_mode == "open_meteo_live_forecast",
+        "source_type": "forecast" if is_live_forecast else "offline_estimate",
+        "provider": "Open-Meteo Forecast API" if is_live_forecast else "NOAA GSOD Diurnal Model",
+        "is_live": is_live_forecast,
+        "timezone": om_timezone,
+        "fallback_reason": None if is_live_forecast else (fallback_reason or "Forecast provider unavailable"),
         "peak_window": f"{start_str} – {end_str}",
         "peak_heat_index_c": peak_hi,
         "peak_tier": peak_tier,
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
         "hourly": hourly
     }
 

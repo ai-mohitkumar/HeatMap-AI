@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Smartphone,
   Laptop,
@@ -82,15 +82,15 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'Google Pixel, Samsung Galaxy, OnePlus, Xiaomi',
     file: 'HeatShield-AI-v2.0-universal.apk',
     url: '/downloads/HeatShield-AI-v2.0-universal.apk',
-    size: '585 KB',
+    size: '601.6 KB',
     version: 'v2.0.4',
     format: 'APK (Native Signed Package)',
     compatibility: 'Android 7.0 to 15 (ARM64, ARMv7, x86_64)',
-    sha256: '5d38212c5eb50cb4a218d338d04d675a315cd9bfdf707db83098e7cb3678572a',
+    sha256: '7d133584e9279b44731ed98dc0eba87a2561deb0e81b0020092ba02fde477978',
     badge: 'Native Signed APK',
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
     instructions: [
-      'Tap "Download APK" to save HeatShield-AI-v2.0-universal.apk (585 KB) directly to your device.',
+      'Tap "Download APK" to save HeatShield-AI-v2.0-universal.apk directly to your device.',
       'Open Downloads or tap the download completion notification.',
       'If prompted with "Install unknown apps", tap Settings and enable "Allow from this source".',
       'Tap "Install" — HeatShield AI installs cleanly and opens with full offline heat safety intelligence!'
@@ -106,7 +106,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     version: 'v2.0.4',
     format: 'Apple Configuration Profile (.mobileconfig)',
     compatibility: 'iOS 15.0+, iPadOS 15.0+, macOS Monterey+',
-    sha256: '101b17cf869b870ba217e9f98297b10dec3b0d82ad2375f3a150c77dc767eeda',
+    sha256: 'ab3313e6ad542da7473f911ed8ea571644abe83b710beaff363603c5ae78101d',
     badge: 'Native WebClip Profile',
     badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
     instructions: [
@@ -123,7 +123,7 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'Wear OS 3+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3',
     file: 'HeatShield-WearOS-Companion.apk',
     url: '/downloads/HeatShield-WearOS-Companion.apk',
-    size: '12.8 KB',
+    size: '12.5 KB',
     version: 'v2.0.4',
     format: 'Wear OS Native Signed APK',
     compatibility: 'Wear OS 3.0+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3',
@@ -143,11 +143,11 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'Windows 10/11, macOS, Linux',
     file: 'HeatShield-AI-Desktop-Windows.zip',
     url: '/downloads/HeatShield-AI-Desktop-Windows.zip',
-    size: '0.6 MB',
+    size: '586.6 KB',
     version: 'v2.0.4',
     format: 'Windows & macOS Standalone (.zip)',
     compatibility: 'Windows 10/11 (64-bit), macOS 12+, Linux x86_64',
-    sha256: '382339bdf8e75caf1badef6bbebd23cdf18ca85ad2c14a92012fe671c9df0b3d',
+    sha256: '53117cb3a2a4321f2e74d31be22bf7f4f64c9a479996c88a65ecf3b285cae02f',
     badge: '1-Click Portable',
     badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
     instructions: [
@@ -163,11 +163,11 @@ export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
     subtitle: 'University Review, Viva Defense & Disaster Planning',
     file: 'HeatShield-AI-Master-Offline-Suite.zip',
     url: '/downloads/HeatShield-AI-Master-Offline-Suite.zip',
-    size: '19.2 KB',
+    size: '18.8 KB',
     version: 'v2.0.4',
     format: 'Full ML, GIS & Research Bundle (.zip)',
     compatibility: 'Universal (Python 3.10+, Jupyter, Node.js)',
-    sha256: '9ab27dc86551bc4d61fbfc234596892a1af146eb55be7585b0fc4a37f8e93912',
+    sha256: 'bf29c08a634324be193a1ea931d41ec40e92a913bb34cef44aadc35ab7eed850',
     badge: 'Complete Academic Suite',
     badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
     instructions: [
@@ -218,10 +218,49 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
   const [watchSosTriggered, setWatchSosTriggered] = useState<boolean>(false);
   const [watchWaterLogged, setWatchWaterLogged] = useState<boolean>(false);
 
-  // Download Modal state
+  // Download Modal state + live manifest sync (avoids stale SHA-256 checksums across builds)
+  const [downloadPackages, setDownloadPackages] = useState<DownloadPackageInfo[]>(DOWNLOAD_PACKAGES);
   const [activeDownloadModal, setActiveDownloadModal] = useState<DownloadPackageInfo | null>(null);
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
   const [downloadSuccessNotice, setDownloadSuccessNotice] = useState<string | null>(null);
+
+  const manifestHref = useMemo(() => {
+    const base = import.meta.env.BASE_URL || './';
+    return `${base}downloads/downloads-manifest.json`;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location?.protocol === 'file:' || typeof fetch !== 'function') {
+      return;
+    }
+    const controller = new AbortController();
+    fetch(manifestHref, { signal: controller.signal, cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((manifest) => {
+        const pkgs = manifest?.packages;
+        if (!pkgs || typeof pkgs !== 'object') return;
+        setDownloadPackages((prev) =>
+          prev.map((item) => {
+            const live = pkgs[item.id];
+            if (!live) return item;
+            return {
+              ...item,
+              file: live.fileName || item.file,
+              url: live.url || item.url,
+              size: live.sizeFormatted || item.size,
+              version: live.version ? `v${String(live.version).replace(/^v/i, '')}` : item.version,
+              sha256: live.sha256 || item.sha256,
+              format: live.format || item.format,
+              compatibility: live.compatibility || item.compatibility
+            };
+          })
+        );
+      })
+      .catch(() => {
+        // Offline / bundled builds retain fallback metadata cleanly
+      });
+    return () => controller.abort();
+  }, [manifestHref]);
 
   // Active location calculation
   const activeGeo = useMemo(() => {
@@ -1172,7 +1211,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
               {/* App Store Badge -> Triggers iOS Profile Download & Walkthrough Modal */}
               <button
                 onClick={() => {
-                  const iosPkg = DOWNLOAD_PACKAGES.find(p => p.id === 'ios');
+                  const iosPkg = downloadPackages.find(p => p.id === 'ios');
                   if (iosPkg) {
                     handleTriggerDownload(iosPkg);
                     setActiveDownloadModal(iosPkg);
@@ -1193,7 +1232,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
               {/* Google Play Badge -> Triggers Android APK Download & Walkthrough Modal */}
               <button
                 onClick={() => {
-                  const androidPkg = DOWNLOAD_PACKAGES.find(p => p.id === 'android');
+                  const androidPkg = downloadPackages.find(p => p.id === 'android');
                   if (androidPkg) {
                     handleTriggerDownload(androidPkg);
                     setActiveDownloadModal(androidPkg);
@@ -1220,7 +1259,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
                   if (hasPwaPrompt && onTriggerPwaInstall) {
                     onTriggerPwaInstall();
                   } else {
-                    const masterPkg = DOWNLOAD_PACKAGES.find(p => p.id === 'master');
+                    const masterPkg = downloadPackages.find(p => p.id === 'master');
                     if (masterPkg) {
                       setActiveDownloadModal(masterPkg);
                     }
@@ -1352,7 +1391,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
 
           {/* Download Packages Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {DOWNLOAD_PACKAGES.map((pkg) => {
+            {downloadPackages.map((pkg) => {
               const Icon = pkg.id === 'android' ? Smartphone : (pkg.id === 'ios' ? Smartphone : (pkg.id === 'smartwatch' ? Watch : (pkg.id === 'desktop' ? Laptop : Layers)));
               return (
                 <div
@@ -1433,7 +1472,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
               </div>
             </div>
             <a
-              href="/downloads/downloads-manifest.json"
+              href={manifestHref}
               target="_blank"
               rel="noreferrer"
               className="px-3 py-1.5 rounded-xl bg-[#131E3A] hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-white font-mono text-[11px] font-semibold transition flex items-center gap-1.5 shrink-0"

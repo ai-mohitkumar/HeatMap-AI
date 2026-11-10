@@ -17,7 +17,7 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
   onClose,
   onConfirmExport,
   activeK = 4,
-  activeLocation = 'Patna Synoptic Base, IN'
+  activeLocation = 'Not Selected'
 }) => {
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('md');
   const [isExporting, setIsExporting] = useState<boolean>(false);

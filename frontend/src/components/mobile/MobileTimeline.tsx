@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Clock, Droplets, Wind, ShieldCheck } from 'lucide-react';
+import type { HourlyForecastResponse } from '../../types';
 
 interface TimelinePeriod {
   time: string;
@@ -8,7 +9,7 @@ interface TimelinePeriod {
   heatIndexC: number;
   humidityPct: number;
   windKmh: number;
-  risk: 'Comfortable' | 'Increasing' | 'Moderate' | 'High Risk' | 'Extreme Risk' | string;
+  risk: string;
   riskColor: string;
   dotColor: string;
   advice: string;
@@ -19,119 +20,182 @@ interface MobileTimelineProps {
   baseHeatIndexC: number;
   baseHumidity: number;
   baseWind: number;
+  hourlyForecast?: HourlyForecastResponse | null;
+  locationUnavailable?: boolean;
+}
+
+function formatHourAmPm(hNum: number): string {
+  if (hNum === 0) return '12:00 AM';
+  if (hNum < 12) return `${hNum.toString().padStart(2, '0')}:00 AM`;
+  if (hNum === 12) return '12:00 PM';
+  return `${(hNum - 12).toString().padStart(2, '0')}:00 PM`;
+}
+
+function tierStyling(tier: string): { riskColor: string; dotColor: string } {
+  const norm = tier.toLowerCase();
+  if (norm === 'extreme') {
+    return { riskColor: 'text-purple-300 bg-purple-500/15 border-purple-500/40', dotColor: 'bg-purple-400' };
+  }
+  if (norm === 'very high') {
+    return { riskColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30', dotColor: 'bg-rose-500' };
+  }
+  if (norm === 'high') {
+    return { riskColor: 'text-orange-400 bg-orange-500/10 border-orange-500/30', dotColor: 'bg-orange-400' };
+  }
+  if (norm === 'moderate') {
+    return { riskColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30', dotColor: 'bg-amber-400' };
+  }
+  return { riskColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30', dotColor: 'bg-emerald-400' };
 }
 
 export const MobileTimeline: React.FC<MobileTimelineProps> = ({
   baseTempC,
   baseHeatIndexC,
   baseHumidity,
-  baseWind
+  baseWind,
+  hourlyForecast,
+  locationUnavailable = false
 }) => {
-  // Generate realistic diurnal thermal trajectory relative to current base
-  const periods: TimelinePeriod[] = [
-    {
-      time: '08:00 AM',
-      hour: 8,
-      tempC: Math.round((baseTempC - 6.0) * 10) / 10,
-      heatIndexC: Math.round((baseHeatIndexC - 7.5) * 10) / 10,
-      humidityPct: Math.min(baseHumidity + 18, 92),
-      windKmh: Math.max(baseWind - 2, 6),
-      risk: 'Comfortable',
-      riskColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
-      dotColor: 'bg-emerald-400',
-      advice: 'Optimal morning window for outdoor jogging, field labor, and market errands.'
-    },
-    {
-      time: '10:00 AM',
-      hour: 10,
-      tempC: Math.round((baseTempC - 2.5) * 10) / 10,
-      heatIndexC: Math.round((baseHeatIndexC - 3.0) * 10) / 10,
-      humidityPct: Math.min(baseHumidity + 8, 85),
-      windKmh: baseWind,
-      risk: 'Increasing',
-      riskColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
-      dotColor: 'bg-amber-400',
-      advice: 'Solar elevation increasing. Apply sunscreen (SPF 50+) and carry chilled water.'
-    },
-    {
-      time: '12:00 PM',
-      hour: 12,
-      tempC: Math.round((baseTempC + 1.2) * 10) / 10,
-      heatIndexC: Math.round((baseHeatIndexC + 2.0) * 10) / 10,
-      humidityPct: Math.max(baseHumidity - 6, 38),
-      windKmh: baseWind + 3,
-      risk: 'Moderate',
-      riskColor: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
-      dotColor: 'bg-orange-400',
-      advice: 'Pre-peak radiation. Begin mandatory rest rotations for outdoor workers.'
-    },
-    {
-      time: '01:00 PM',
-      hour: 13,
-      tempC: Math.round((baseTempC + 3.5) * 10) / 10,
-      heatIndexC: Math.round((baseHeatIndexC + 5.0) * 10) / 10,
-      humidityPct: Math.max(baseHumidity - 10, 32),
-      windKmh: baseWind + 4,
-      risk: 'High Risk',
-      riskColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
-      dotColor: 'bg-rose-500',
-      advice: 'PEAK RADIANT STRESS: Stay indoors under shade or fans. Avoid all direct sun transit.'
-    },
-    {
-      time: '03:00 PM',
-      hour: 15,
-      tempC: Math.round((baseTempC + 3.0) * 10) / 10,
-      heatIndexC: Math.round((baseHeatIndexC + 4.5) * 10) / 10,
-      humidityPct: Math.max(baseHumidity - 8, 35),
-      windKmh: baseWind + 2,
-      risk: 'High Risk',
-      riskColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
-      dotColor: 'bg-rose-500',
-      advice: 'Sustained severe thermal envelope. Keep hydrated; check elders & infants.'
-    },
-    {
-      time: '05:00 PM',
-      hour: 17,
-      tempC: Math.round((baseTempC - 0.5) * 10) / 10,
-      heatIndexC: Math.round((baseHeatIndexC - 1.0) * 10) / 10,
-      humidityPct: Math.min(baseHumidity + 4, 75),
-      windKmh: baseWind,
-      risk: 'Moderate',
-      riskColor: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
-      dotColor: 'bg-orange-400',
-      advice: 'Solar radiation declining, ambient temperature cooling down.'
-    },
-    {
-      time: '08:00 PM',
-      hour: 20,
-      tempC: Math.round((baseTempC - 4.5) * 10) / 10,
-      heatIndexC: Math.round((baseHeatIndexC - 5.5) * 10) / 10,
-      humidityPct: Math.min(baseHumidity + 14, 88),
-      windKmh: Math.max(baseWind - 3, 5),
-      risk: 'Improving',
-      riskColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
-      dotColor: 'bg-emerald-400',
-      advice: 'Evening cool recovery. Safe for leisure walks and outdoor ventilation.'
-    }
-  ];
+  const [selectedIdx, setSelectedIdx] = useState<number>(-1);
 
-  // Default selected period is midday (1:00 PM) or current nearest hour
+  if (locationUnavailable) {
+    return (
+      <div className="rounded-2xl bg-[#0F172E] border border-slate-800 p-4 shadow-lg text-xs text-slate-400">
+        Select a location or enable GPS to load hourly forecast and heat risk timeline.
+      </div>
+    );
+  }
+
+  const hasLiveForecast = Boolean(
+    hourlyForecast && hourlyForecast.hourly && hourlyForecast.hourly.length > 0 && hourlyForecast.is_live
+  );
+
+  // Use real forecast points when available, else fallback to diurnal curve clearly labeled as Offline Estimate
+  const periods: TimelinePeriod[] =
+    hourlyForecast && hourlyForecast.hourly && hourlyForecast.hourly.length > 0
+      ? hourlyForecast.hourly
+          .filter((item) => [6, 8, 10, 12, 14, 16, 18, 20].includes(item.hour_num) || item.is_peak)
+          .filter((item, idx, arr) => arr.findIndex((x) => x.hour_num === item.hour_num) === idx)
+          .slice(0, 8)
+          .map((item) => {
+            const style = tierStyling(item.risk_tier);
+            return {
+              time: formatHourAmPm(item.hour_num),
+              hour: item.hour_num,
+              tempC: item.temp_c,
+              heatIndexC: item.heat_index_c,
+              humidityPct: Math.round(item.humidity_pct),
+              windKmh: baseWind,
+              risk: item.risk_tier,
+              riskColor: style.riskColor,
+              dotColor: style.dotColor,
+              advice: item.advice
+            };
+          })
+      : [
+          {
+            time: '08:00 AM',
+            hour: 8,
+            tempC: Math.round((baseTempC - 6.0) * 10) / 10,
+            heatIndexC: Math.round((baseHeatIndexC - 7.5) * 10) / 10,
+            humidityPct: Math.min(baseHumidity + 18, 92),
+            windKmh: Math.max(baseWind - 2, 6),
+            risk: 'Low',
+            riskColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+            dotColor: 'bg-emerald-400',
+            advice: 'Optimal morning window for outdoor jogging, field labor, and market errands.'
+          },
+          {
+            time: '10:00 AM',
+            hour: 10,
+            tempC: Math.round((baseTempC - 2.5) * 10) / 10,
+            heatIndexC: Math.round((baseHeatIndexC - 3.0) * 10) / 10,
+            humidityPct: Math.min(baseHumidity + 8, 85),
+            windKmh: baseWind,
+            risk: 'Moderate',
+            riskColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+            dotColor: 'bg-amber-400',
+            advice: 'Solar elevation increasing. Apply sunscreen and carry chilled water.'
+          },
+          {
+            time: '12:00 PM',
+            hour: 12,
+            tempC: Math.round((baseTempC + 1.2) * 10) / 10,
+            heatIndexC: Math.round((baseHeatIndexC + 2.0) * 10) / 10,
+            humidityPct: Math.max(baseHumidity - 6, 38),
+            windKmh: baseWind + 3,
+            risk: 'High',
+            riskColor: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
+            dotColor: 'bg-orange-400',
+            advice: 'Pre-peak radiation. Begin mandatory rest rotations for outdoor workers.'
+          },
+          {
+            time: '02:00 PM',
+            hour: 14,
+            tempC: Math.round((baseTempC + 3.5) * 10) / 10,
+            heatIndexC: Math.round((baseHeatIndexC + 5.0) * 10) / 10,
+            humidityPct: Math.max(baseHumidity - 10, 32),
+            windKmh: baseWind + 4,
+            risk: 'Very High',
+            riskColor: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
+            dotColor: 'bg-rose-500',
+            advice: 'PEAK RADIANT STRESS: Stay indoors under shade or fans. Avoid all direct sun transit.'
+          },
+          {
+            time: '05:00 PM',
+            hour: 17,
+            tempC: Math.round((baseTempC - 0.5) * 10) / 10,
+            heatIndexC: Math.round((baseHeatIndexC - 1.0) * 10) / 10,
+            humidityPct: Math.min(baseHumidity + 4, 75),
+            windKmh: baseWind,
+            risk: 'Moderate',
+            riskColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
+            dotColor: 'bg-amber-400',
+            advice: 'Solar radiation declining, ambient temperature cooling down.'
+          },
+          {
+            time: '08:00 PM',
+            hour: 20,
+            tempC: Math.round((baseTempC - 4.5) * 10) / 10,
+            heatIndexC: Math.round((baseHeatIndexC - 5.5) * 10) / 10,
+            humidityPct: Math.min(baseHumidity + 14, 88),
+            windKmh: Math.max(baseWind - 3, 5),
+            risk: 'Low',
+            riskColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+            dotColor: 'bg-emerald-400',
+            advice: 'Evening cool recovery. Safe for leisure walks and outdoor ventilation.'
+          }
+        ];
+
   const currentH = new Date().getHours();
   const initialIndex = periods.findIndex((p) => p.hour >= currentH);
-  const [selectedIdx, setSelectedIdx] = useState<number>(initialIndex >= 0 ? initialIndex : 3);
+  const resolvedIdx =
+    selectedIdx >= 0 && selectedIdx < periods.length
+      ? selectedIdx
+      : initialIndex >= 0
+      ? initialIndex
+      : Math.min(3, periods.length - 1);
 
-  const selected = periods[selectedIdx];
+  const selected = periods[resolvedIdx];
 
   return (
     <div className="rounded-2xl bg-[#0F172E] border border-slate-800 p-4 shadow-lg space-y-3.5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-blue-400" />
           <h3 className="text-xs font-black uppercase tracking-wider text-white">
-            Today's 24-Hour Timeline
+            Today's Hourly Timeline
           </h3>
         </div>
-        <span className="text-[10px] text-slate-400 font-medium">Tap any hour</span>
+        <span
+          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+            hasLiveForecast
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+          }`}
+        >
+          {hasLiveForecast ? 'Forecast • Open-Meteo' : 'Offline Diurnal Estimate'}
+        </span>
       </div>
 
       {/* Hour Strip (Scrollable horizontally on mobile) */}

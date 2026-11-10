@@ -7,6 +7,13 @@ import { MobileTimeline } from './MobileTimeline';
 import { MobileIDWCard, type StationInfluenceItem } from './MobileIDWCard';
 import { MobileMap } from './MobileMap';
 
+import type {
+  DataProvenanceType,
+  HourlyForecastResponse,
+  LocationSourceType,
+  ReverseGeocodeSource
+} from '../../types';
+
 interface MobileHomeProps {
   locationName: string;
   tempC: number;
@@ -14,9 +21,19 @@ interface MobileHomeProps {
   humidityPct: number;
   windKmh: number;
   riskLevel: string;
-  currentLat: number;
-  currentLon: number;
-  accuracyM?: number;
+  currentLat: number | null;
+  currentLon: number | null;
+  accuracyM?: number | null;
+  locationSource?: LocationSourceType;
+  reverseSource?: ReverseGeocodeSource;
+  locationUnavailable?: boolean;
+  locationAcquiring?: boolean;
+  locationErrorReason?: string | null;
+  weatherProvenance?: DataProvenanceType;
+  weatherProvider?: string;
+  observedAt?: string | null;
+  weatherFallbackReason?: string | null;
+  hourlyForecast?: HourlyForecastResponse | null;
   contributingStations: StationInfluenceItem[];
   selectedStationId: string;
   onSelectStation: (stationId: string) => void;
@@ -37,7 +54,17 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
   riskLevel,
   currentLat,
   currentLon,
-  accuracyM = 50,
+  accuracyM,
+  locationSource,
+  reverseSource,
+  locationUnavailable = false,
+  locationAcquiring = false,
+  locationErrorReason,
+  weatherProvenance = 'offline_estimate',
+  weatherProvider,
+  observedAt,
+  weatherFallbackReason,
+  hourlyForecast,
   contributingStations,
   selectedStationId,
   onSelectStation,
@@ -88,11 +115,21 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         riskLevel={riskLevel}
         onOpenLocationPicker={onOpenLocationPicker}
         onOpenRiskDetails={() => onNavigateTab('risk')}
+        onTrackMove={onTrackMove}
+        locationUnavailable={locationUnavailable}
+        locationAcquiring={locationAcquiring}
+        locationErrorReason={locationErrorReason}
+        locationSource={locationSource}
+        accuracyM={accuracyM}
+        weatherProvenance={weatherProvenance}
+        weatherProvider={weatherProvider}
+        observedAt={observedAt}
+        weatherFallbackReason={weatherFallbackReason}
       />
 
       {/* 3. Peak Risk Window Card */}
       <MobilePeakRiskCard
-        peakWindow="12:30 PM – 3:30 PM"
+        peakWindow={hourlyForecast?.peak_window || '12:30 PM – 3:30 PM'}
         riskLevel={riskLevel}
         onViewSafetyPlan={onViewSafetyPlan}
       />
@@ -120,7 +157,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
       {/* 4. Swipeable Interactive Insight Cards */}
       <MobileInsightsCarousel
         riskLevel={riskLevel}
-        peakWindow="12:30 – 3:30 PM"
+        peakWindow={hourlyForecast?.peak_window || '12:30 – 3:30 PM'}
         waterLoggedCount={waterCount}
         onLogWater={() => setWaterCount((prev) => Math.min(prev + 1, 16))}
         onNavigateTab={onNavigateTab}
@@ -132,6 +169,8 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         baseHeatIndexC={feelsLikeC}
         baseHumidity={humidityPct}
         baseWind={windKmh}
+        hourlyForecast={hourlyForecast}
+        locationUnavailable={locationUnavailable || locationAcquiring}
       />
 
       {/* 6. Exact Location & 4-Station IDW Influence Breakdown */}
@@ -139,6 +178,9 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         currentLat={currentLat}
         currentLon={currentLon}
         accuracyM={accuracyM}
+        locationSource={locationSource}
+        reverseSource={reverseSource}
+        locationUnavailable={locationUnavailable || locationAcquiring}
         contributingStations={contributingStations}
         onTrackMove={onTrackMove}
         isTracking={isTracking}
@@ -156,6 +198,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         selectedStationId={selectedStationId}
         onSelectStation={onSelectStation}
         onToggleFullscreen={() => onNavigateTab('map')}
+        locationUnavailable={locationUnavailable || locationAcquiring}
       />
 
       {/* 8. Quick AI Assistant Launcher Card */}

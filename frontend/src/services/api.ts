@@ -42,8 +42,15 @@ import type {
   EmergingHotspotResponse,
   HourlyForecastResponse,
   HourlyForecastItem,
-  WelfareCheckinRecord
+  WelfareCheckinRecord,
+  LiveWeatherResponse
 } from '../types';
+
+import {
+  computeHeatIndexC,
+  classifyHeatIndexTier,
+  computeLiveHsi
+} from '../utils/heatIndex';
 
 import {
   findNearestStationOffline,
@@ -69,6 +76,32 @@ const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.t
 const API_BASE = configuredApiUrl
   ? `${configuredApiUrl.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
   : '/api';
+const IS_FILE_PROTOCOL_NO_BACKEND =
+  typeof window !== 'undefined' && window.location?.protocol === 'file:' && !configuredApiUrl;
+
+/**
+ * Cross-browser fetch with AbortController timeout (safe on older iOS Safari / Android WebViews
+ * where AbortSignal.timeout may be unavailable).
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs: number = 4500
+): Promise<Response> {
+  if (typeof AbortController === 'undefined') {
+    return fetch(url, init);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: init.signal || controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Robust JSON fetch wrapper that:
@@ -78,26 +111,52 @@ const API_BASE = configuredApiUrl
  * 4. Awaits res.json() safely inside the try-block
  */
 async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs: number = 4500): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      ...init,
-      signal: init?.signal || controller.signal
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
-    }
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new Error(`Expected application/json response but received "${contentType || 'non-JSON'}"`);
-    }
-    return (await res.json()) as T;
-  } finally {
-    clearTimeout(timer);
+  if (IS_FILE_PROTOCOL_NO_BACKEND && url.startsWith('/api')) {
+    throw new Error('Running from file:// bundle without remote backend URL');
   }
+  const res = await fetchWithTimeout(url, init, timeoutMs);
+  if (!res.ok) {
+    throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
+  }
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected application/json response but received "${contentType || 'non-JSON'}"`);
+  }
+  return (await res.json()) as T;
 }
 
+
+function buildOfflineLiveWeather(
+  lat: number,
+  lon: number,
+  fallbackReason: string
+): LiveWeatherResponse {
+  const idw = interpolateLocationFeaturesOffline(lat, lon, 50, 4, 2.0, 'offline_idw', fallbackReason);
+  const temp = idw.weather.temperature;
+  const hi = idw.weather.feels_like;
+  return {
+    source: 'Offline Historical IDW Estimate (NOAA GSOD 2022–2025)',
+    source_type: 'offline_estimate',
+    provider: 'NOAA GSOD 2022–2025 IDW',
+    status: 'offline_fallback',
+    is_live: false,
+    latitude: lat,
+    longitude: lon,
+    temperature_c: temp,
+    relative_humidity_pct: idw.weather.humidity,
+    dew_point_c: idw.weather.dew_point,
+    wind_speed_kmh: idw.weather.wind_speed,
+    surface_pressure_hpa: idw.weather.pressure,
+    apparent_temperature_c: hi,
+    heat_index_c: hi,
+    heat_stress_index: idw.prediction.risk_score,
+    risk_tier: classifyHeatIndexTier(hi),
+    observed_at: null,
+    estimated_at: new Date().toISOString(),
+    timezone: null,
+    fallback_reason: fallbackReason
+  };
+}
 
 export const api = {
   async getDatasetSummary(): Promise<DatasetSummary> {
@@ -426,22 +485,45 @@ export const api = {
   },
 
   async getHourlyForecast(lat: number, lon: number, stationId?: string): Promise<HourlyForecastResponse> {
-    try {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        return getOfflineHourlyForecast(lat, lon, stationId);
-      }
-      const stParam = stationId ? `&station_id=${stationId}` : '';
-      const res = await fetch(`${API_BASE}/safety/forecast/hourly?latitude=${lat}&longitude=${lon}${stParam}`);
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
+    let fallbackReason = 'Network offline';
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return getOfflineHourlyForecast(lat, lon, stationId, fallbackReason);
+    }
 
-    // Direct browser Open-Meteo query (zero CORS, no key, works natively on Vercel deployment)
+    let backendFallback: HourlyForecastResponse | null = null;
+    if (!IS_FILE_PROTOCOL_NO_BACKEND) {
+      try {
+        const stParam = stationId ? `&station_id=${encodeURIComponent(stationId)}` : '';
+        const res = await fetchWithTimeout(
+          `${API_BASE}/safety/forecast/hourly?latitude=${lat}&longitude=${lon}${stParam}`,
+          {},
+          4500
+        );
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && ct.includes('application/json')) {
+          const data = (await res.json()) as HourlyForecastResponse;
+          if (data && data.is_live && data.source_type === 'forecast' && Array.isArray(data.hourly) && data.hourly.length > 0) {
+            return data;
+          }
+          backendFallback = data;
+          fallbackReason = data?.fallback_reason || 'Backend returned offline forecast estimate';
+          console.warn('[API] Backend forecast unavailable or offline; attempting direct Open-Meteo:', fallbackReason);
+        } else {
+          fallbackReason = `Backend forecast returned HTTP ${res.status} (${ct || 'unknown content-type'})`;
+          console.warn('[API] /safety/forecast/hourly non-JSON or error:', fallbackReason);
+        }
+      } catch (err) {
+        fallbackReason = err instanceof Error ? err.message : String(err);
+        console.warn('[API] /safety/forecast/hourly request failed, trying direct Open-Meteo:', err);
+      }
+    }
+
+    // Direct browser Open-Meteo query (zero CORS, local timezone via timezone=auto)
     try {
-      const omRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&forecast_days=1`
+      const omRes = await fetchWithTimeout(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,relative_humidity_2m&forecast_days=1&timezone=auto`,
+        {},
+        5000
       );
       const omCt = omRes.headers.get('content-type') || '';
       if (omRes.ok && omCt.includes('application/json')) {
@@ -451,48 +533,44 @@ export const api = {
         const rhs: number[] = omData.hourly?.relative_humidity_2m || [];
         const liveMap: Record<number, { temp: number; rh: number }> = {};
         times.forEach((tStr, idx) => {
-          if (tStr.includes('T') && temps[idx] !== undefined) {
+          if (tStr.includes('T') && temps[idx] !== undefined && temps[idx] !== null) {
             const hInt = parseInt(tStr.split('T')[1].split(':')[0], 10);
-            liveMap[hInt] = { temp: temps[idx], rh: rhs[idx] ?? 50 };
+            liveMap[hInt] = { temp: Number(temps[idx]), rh: Number(rhs[idx] ?? 50) };
           }
         });
+
+        const availableHours = Object.keys(liveMap).map(Number);
+        if (availableHours.length === 0) {
+          throw new Error('Open-Meteo hourly response contained no valid data points');
+        }
 
         const daylight = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
         let peakHi = -999;
         let peakH = 14;
         const items: HourlyForecastItem[] = daylight.map((h) => {
-          const entry = liveMap[h] || { temp: 32, rh: 50 };
-          const T = entry.temp;
-          const R = entry.rh;
-          const tf = T * 1.8 + 32.0;
-          const hi_f =
-            -42.379 +
-            2.04901523 * tf +
-            10.14333127 * R -
-            0.22475541 * tf * R -
-            0.00683783 * tf * tf -
-            0.05481717 * R * R +
-            0.00122874 * tf * tf * R +
-            0.00085282 * tf * R * R -
-            0.00000199 * tf * tf * R * R;
-          const hi = tf >= 80 ? Math.round(((hi_f - 32.0) / 1.8) * 10) / 10 : Math.round(T * 10) / 10;
+          let entry = liveMap[h];
+          if (!entry) {
+            const nearestHour = availableHours.reduce((best, cand) =>
+              Math.abs(cand - h) < Math.abs(best - h) ? cand : best
+            );
+            entry = liveMap[nearestHour];
+          }
+          const T = Math.round(entry.temp * 10) / 10;
+          const R = Math.round(entry.rh);
+          const hi = computeHeatIndexC(T, R);
           if (hi > peakHi) {
             peakHi = hi;
             peakH = h;
           }
-          let tier: 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme' = 'Low';
+          const tier = classifyHeatIndexTier(hi);
           let advice = 'Coolest part of the day. Ideal for outdoor chores.';
-          if (hi > 53.0) {
-            tier = 'Extreme';
+          if (tier === 'Extreme') {
             advice = 'Extreme heatstroke danger. Halt outdoor exertion.';
-          } else if (hi > 44.0) {
-            tier = 'Very High';
+          } else if (tier === 'Very High') {
             advice = 'Danger of heat cramps & exhaustion. Avoid direct sun.';
-          } else if (hi > 37.0) {
-            tier = 'High';
+          } else if (tier === 'High') {
             advice = 'Laborers take 15-min rest in shade per hour.';
-          } else if (hi > 29.0) {
-            tier = 'Moderate';
+          } else if (tier === 'Moderate') {
             advice = 'Drink 250ml water per hour; light shade advised.';
           }
 
@@ -519,15 +597,11 @@ export const api = {
         const startStr = peakH > 12 ? `${peakH - 12}:00 PM` : `${peakH}:00 AM`;
         const endH = peakH + 2;
         const endStr = endH > 12 ? `${endH - 12}:00 PM` : `${endH}:00 AM`;
-        let peakTier: 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme' = 'Moderate';
-        if (peakHi > 53.0) peakTier = 'Extreme';
-        else if (peakHi > 44.0) peakTier = 'Very High';
-        else if (peakHi > 37.0) peakTier = 'High';
-        else if (peakHi <= 29.0) peakTier = 'Low';
+        const peakTier = classifyHeatIndexTier(peakHi);
 
         return {
           station_id: stationId || 'LIVE_GPS',
-          station_name: 'Live Open-Meteo Coordinate Feed',
+          station_name: 'Open-Meteo Coordinate Forecast',
           latitude: lat,
           longitude: lon,
           peak_window: `${startStr} – ${endStr}`,
@@ -535,85 +609,111 @@ export const api = {
           peak_tier: peakTier,
           generated_at: new Date().toISOString(),
           data_source: 'open_meteo_live_forecast',
+          source_type: 'forecast',
+          provider: 'Open-Meteo',
+          timezone: omData.timezone || 'auto',
           is_live: true,
           hourly: items
         };
       }
-    } catch {}
+      fallbackReason = `Open-Meteo forecast HTTP ${omRes.status}`;
+      console.warn('[API] Open-Meteo direct forecast failed:', fallbackReason);
+    } catch (err) {
+      fallbackReason = err instanceof Error ? err.message : String(err);
+      console.warn('[API] Open-Meteo direct forecast error:', err);
+    }
 
-    return getOfflineHourlyForecast(lat, lon, stationId);
+    return backendFallback || getOfflineHourlyForecast(lat, lon, stationId, fallbackReason);
   },
 
-  async getLiveWeather(lat: number, lon: number): Promise<any> {
-    try {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        return {
-          source: 'Offline Local Storage IDW',
-          status: 'offline_fallback',
-          is_live: false
-        };
-      }
-      const res = await fetch(`${API_BASE}/safety/weather/live?latitude=${lat}&longitude=${lon}`);
-      const ct = res.headers.get('content-type') || '';
-      if (res.ok && ct.includes('application/json')) {
-        return await res.json();
-      }
-    } catch {}
+  async getLiveWeather(lat: number, lon: number): Promise<LiveWeatherResponse> {
+    let fallbackReason = 'Network offline';
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return buildOfflineLiveWeather(lat, lon, fallbackReason);
+    }
 
-    // Direct browser fetch to Open-Meteo (CORS-friendly, no API key needed, zero-failure on Vercel)
+    let backendFallback: LiveWeatherResponse | null = null;
+    if (!IS_FILE_PROTOCOL_NO_BACKEND) {
+      try {
+        const res = await fetchWithTimeout(
+          `${API_BASE}/safety/weather/live?latitude=${lat}&longitude=${lon}`,
+          {},
+          4500
+        );
+        const ct = res.headers.get('content-type') || '';
+        if (res.ok && ct.includes('application/json')) {
+          const data = (await res.json()) as LiveWeatherResponse;
+          if (data && data.is_live && typeof data.temperature_c === 'number') {
+            return data;
+          }
+          if (data && typeof data.temperature_c === 'number') {
+            backendFallback = data;
+            fallbackReason = data.fallback_reason || 'Backend live weather unavailable';
+            console.warn('[API] Backend returned offline weather fallback; attempting direct Open-Meteo:', fallbackReason);
+          }
+        } else {
+          fallbackReason = `Backend weather returned HTTP ${res.status} (${ct || 'unknown content-type'})`;
+          console.warn('[API] /safety/weather/live non-JSON or incomplete:', fallbackReason);
+        }
+      } catch (err) {
+        fallbackReason = err instanceof Error ? err.message : String(err);
+        console.warn('[API] /safety/weather/live request failed, trying direct Open-Meteo:', err);
+      }
+    }
+
+    // Direct browser fetch to Open-Meteo with local timezone & daily max temp
     try {
-      const omRes = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,surface_pressure,wind_speed_10m`
+      const omRes = await fetchWithTimeout(
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,surface_pressure,wind_speed_10m&daily=temperature_2m_max&forecast_days=1&timezone=auto`,
+        {},
+        5000
       );
       const omCt = omRes.headers.get('content-type') || '';
       if (omRes.ok && omCt.includes('application/json')) {
-        const live = (await omRes.json()).current || {};
-        const t = Number(live.temperature_2m ?? 32.0);
-        const rh = Number(live.relative_humidity_2m ?? 50.0);
-        const tf = t * 1.8 + 32.0;
-        const hi_f =
-          -42.379 +
-          2.04901523 * tf +
-          10.14333127 * rh -
-          0.22475541 * tf * rh -
-          0.00683783 * tf * tf -
-          0.05481717 * rh * rh +
-          0.00122874 * tf * tf * rh +
-          0.00085282 * tf * rh * rh -
-          0.00000199 * tf * tf * rh * rh;
-        const heat_index_c = tf >= 80 ? Math.round(((hi_f - 32.0) / 1.8) * 10) / 10 : Math.round(t * 10) / 10;
-        const hsi = Math.round(0.5 * t + 0.4 * heat_index_c + 0.1 * (t + 3.5));
-        let tier = 'Low';
-        if (heat_index_c > 53.0) tier = 'Extreme';
-        else if (heat_index_c > 44.0) tier = 'Very High';
-        else if (heat_index_c > 37.0) tier = 'High';
-        else if (heat_index_c > 29.0) tier = 'Moderate';
+        const omData = await omRes.json();
+        const live = omData.current || {};
+        if (live.temperature_2m !== undefined && live.temperature_2m !== null) {
+          const t = Number(live.temperature_2m);
+          const rh = Number(live.relative_humidity_2m ?? 50.0);
+          const wind = Number(live.wind_speed_10m ?? 10.0);
+          const dailyMaxArr: number[] = omData.daily?.temperature_2m_max || [];
+          const maxT = dailyMaxArr.length > 0 && dailyMaxArr[0] != null ? Number(dailyMaxArr[0]) : t + 3.0;
+          const heat_index_c = computeHeatIndexC(t, rh);
+          const heat_stress_index = computeLiveHsi(t, heat_index_c, maxT, wind);
+          const tier = classifyHeatIndexTier(heat_index_c);
 
-        return {
-          source: 'Open-Meteo Live API (Client Direct)',
-          status: 'online',
-          latitude: lat,
-          longitude: lon,
-          temperature_c: t,
-          relative_humidity_pct: rh,
-          dew_point_c: Number(live.dew_point_2m ?? 18.0),
-          wind_speed_kmh: Number(live.wind_speed_10m ?? 10.0),
-          surface_pressure_hpa: Number(live.surface_pressure ?? 1010.0),
-          apparent_temperature_c: Number(live.apparent_temperature ?? t),
-          heat_index_c: heat_index_c,
-          heat_stress_index: Math.max(5, Math.min(99, hsi)),
-          risk_tier: tier,
-          is_live: true,
-          observed_at: live.time || new Date().toISOString()
-        };
+          return {
+            source: 'Open-Meteo Live API (Direct)',
+            source_type: 'live_observation',
+            provider: 'Open-Meteo',
+            status: 'online',
+            is_live: true,
+            latitude: lat,
+            longitude: lon,
+            temperature_c: Math.round(t * 10) / 10,
+            relative_humidity_pct: Math.round(rh * 10) / 10,
+            dew_point_c: Number(live.dew_point_2m ?? 18.0),
+            wind_speed_kmh: Math.round(wind * 10) / 10,
+            surface_pressure_hpa: Number(live.surface_pressure ?? 1010.0),
+            apparent_temperature_c: Number(live.apparent_temperature ?? t),
+            heat_index_c,
+            heat_stress_index,
+            risk_tier: tier,
+            observed_at: live.time || new Date().toISOString(),
+            estimated_at: null,
+            timezone: omData.timezone || 'auto',
+            fallback_reason: null
+          };
+        }
       }
-    } catch {}
+      fallbackReason = `Open-Meteo current HTTP ${omRes.status}`;
+      console.warn('[API] Open-Meteo direct current weather failed:', fallbackReason);
+    } catch (err) {
+      fallbackReason = err instanceof Error ? err.message : String(err);
+      console.warn('[API] Open-Meteo direct current weather error:', err);
+    }
 
-    return {
-      source: 'Offline Fallback IDW',
-      status: 'offline_fallback',
-      is_live: false
-    };
+    return backendFallback || buildOfflineLiveWeather(lat, lon, fallbackReason);
   },
 
   async recordWelfareCheckin(checkin: WelfareCheckinRecord): Promise<{ success: boolean; record: WelfareCheckinRecord }> {
@@ -848,12 +948,21 @@ export const api = {
     latitude: number,
     longitude: number,
     accuracyM: number = 18,
-    mode: 'online' | 'offline' = 'online'
+    mode: 'online' | 'offline' = 'online',
+    locationSource: string = 'GPS'
   ): Promise<LocationPredictionResponse> {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return interpolateLocationFeaturesOffline(
+        latitude,
+        longitude,
+        accuracyM,
+        4,
+        2.0,
+        locationSource,
+        'Network offline'
+      );
+    }
     try {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        return interpolateLocationFeaturesOffline(latitude, longitude, accuracyM);
-      }
       return await fetchJson<LocationPredictionResponse>(`${API_BASE}/predict/location`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -861,11 +970,22 @@ export const api = {
           latitude,
           longitude,
           accuracy_m: accuracyM,
-          mode
+          mode,
+          location_source: locationSource
         })
       });
-    } catch {
-      return interpolateLocationFeaturesOffline(latitude, longitude, accuracyM);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.warn('[API] /predict/location failed, falling back to local IDW:', err);
+      return interpolateLocationFeaturesOffline(
+        latitude,
+        longitude,
+        accuracyM,
+        4,
+        2.0,
+        locationSource,
+        reason
+      );
     }
   },
 

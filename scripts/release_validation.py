@@ -14,6 +14,7 @@ Executes end-to-end multi-tier audit validating:
 
 import sys
 import os
+import re
 import time
 import subprocess
 
@@ -42,17 +43,25 @@ def print_status(step_name: str, passed: bool, detail: str = ""):
     dots = "." * (45 - len(step_name))
     print(f"  {step_name} {dots} {status_str}  {detail}")
 
+def _extract_passed_count(output: str) -> str:
+    m = re.search(r"(\d+)\s+passed", output)
+    return m.group(1) if m else "?"
+
+
 def test_backend_core():
     """Run pytest on tests/test_pipeline.py"""
     cmd = [sys.executable, "-m", "pytest", "tests/test_pipeline.py", "-q"]
     res = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True)
-    return res.returncode == 0, "8/8 pipeline tests green"
+    n = _extract_passed_count(res.stdout + res.stderr)
+    return res.returncode == 0, f"{n}/{n} pipeline tests green"
+
 
 def test_safety_engine():
     """Run pytest on tests/test_safety_matrix.py"""
     cmd = [sys.executable, "-m", "pytest", "tests/test_safety_matrix.py", "-q"]
     res = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True)
-    return res.returncode == 0, "10/10 safety matrix tests green"
+    n = _extract_passed_count(res.stdout + res.stderr)
+    return res.returncode == 0, f"{n}/{n} safety matrix tests green"
 
 def test_idw_validation():
     """Verify LOSOCV cross-validation results for k=4, p=2.0"""
@@ -122,25 +131,48 @@ def test_api_integration():
 
     return True, "Health, Optimal-K, IDW-Val, Benchmark & Prediction verified"
 
+def test_geo_and_weather_fixes():
+    """Run pytest on tests/test_geo_store.py and tests/test_geo_and_weather_fixes.py"""
+    cmd = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "tests/test_geo_store.py",
+        "tests/test_geo_and_weather_fixes.py",
+        "-q",
+    ]
+    res = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True)
+    n = _extract_passed_count(res.stdout + res.stderr)
+    return res.returncode == 0, f"{n}/{n} geo store & provenance/security tests green"
+
 def test_typescript_and_build():
-    """Verify frontend TypeScript type-checking and Vite production build"""
+    """Verify frontend linting, TypeScript type-checking, and Vite production build"""
     frontend_dir = os.path.join(ROOT_DIR, "frontend")
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    lint_res = subprocess.run([npm_cmd, "run", "lint"], cwd=frontend_dir, capture_output=True, text=True)
+    if lint_res.returncode != 0:
+        return False, "oxlint failed"
     cmd = [npm_cmd, "run", "build"]
     res = subprocess.run(cmd, cwd=frontend_dir, capture_output=True, text=True)
 
     dist_index = os.path.join(frontend_dir, "dist", "index.html")
     assert os.path.exists(dist_index), "dist/index.html was not generated"
 
-    return res.returncode == 0, "tsc -b && vite build (0 errors, dist verified)"
+    return res.returncode == 0, "oxlint (0 errors) + tsc -b && vite build (dist verified)"
 
 def test_offline_pwa_resilience():
-    """Verify Service Worker registration, sw.js, and client-side offline dataset"""
+    """Verify Service Worker registration, sw.js cache safety, and client-side offline dataset"""
     sw_path = os.path.join(ROOT_DIR, "frontend", "public", "sw.js")
     offline_engine_path = os.path.join(ROOT_DIR, "frontend", "src", "utils", "offlineEngine.ts")
 
     assert os.path.exists(sw_path), "public/sw.js missing"
     assert os.path.exists(offline_engine_path), "offlineEngine.ts missing"
+
+    with open(sw_path, "r", encoding="utf-8") as f:
+        sw_content = f.read()
+        assert "NO_CACHE_API_PREFIXES" in sw_content, "sw.js must bypass cache for live weather and geo IP"
+        assert "/api/safety/weather/live" in sw_content
+        assert "/api/geo/ip" in sw_content
 
     with open(offline_engine_path, "r", encoding="utf-8") as f:
         content = f.read()
@@ -149,35 +181,38 @@ def test_offline_pwa_resilience():
         assert "interpolateLocationFeaturesOffline" in content
         assert content.count("full_name:") == 46, "Expected 46 pre-cached offline stations"
 
-    return True, "sw.js present, 46 synoptic stations pre-cached in client bundle"
+    return True, "sw.js (non-stale live API), 46 synoptic stations pre-cached"
 
 def test_gps_integration():
-    """Verify GNSS error handling and accuracy monitoring in frontend"""
-    comp_home_path = os.path.join(ROOT_DIR, "frontend", "src", "components", "CompanionHome.tsx")
-    with open(comp_home_path, "r", encoding="utf-8") as f:
+    """Verify GNSS error handling, accuracy metadata, and zero silent Patna fallback in geolocationService"""
+    geo_service_path = os.path.join(ROOT_DIR, "frontend", "src", "utils", "geolocationService.ts")
+    with open(geo_service_path, "r", encoding="utf-8") as f:
         content = f.read()
         assert "PERMISSION_DENIED" in content
         assert "TIMEOUT" in content
         assert "POSITION_UNAVAILABLE" in content
         assert "enableHighAccuracy: true" in content
-        assert "accuracy > 500" in content
+        assert "status: 'unavailable'" in content
+        assert "preset_fallback" not in content, "Hardcoded preset_fallback must never exist"
+        assert "25.5941" not in content, "Hardcoded Patna latitude must never exist in geolocationService"
 
-    return True, "Hardware GNSS, accuracy thresholds & 3 error states handled"
+    return True, "Multi-tier GNSS, accuracy tracking & explicit unavailable state verified"
 
 def test_climate_intelligence():
     """Run pytest on tests/test_climate_intelligence.py (RQ1-RQ6)"""
     cmd = [sys.executable, "-m", "pytest", "tests/test_climate_intelligence.py", "-q"]
     res = subprocess.run(cmd, cwd=ROOT_DIR, capture_output=True, text=True)
-    return res.returncode == 0, "7/7 climate intelligence tests green (RQ1–RQ6)"
+    n = _extract_passed_count(res.stdout + res.stderr)
+    return res.returncode == 0, f"{n}/{n} climate intelligence tests green (RQ1–RQ6)"
 
 def main():
     print_header("HEATSHIELD AI — MASTER RELEASE QUALIFICATION SUITE")
-    print("  Date / Timestamp: September 2026")
-    print("  Execution Mode:   Automated Multi-Tier Release Gate")
+    print("  Execution Mode:   Automated Multi-Tier Deployment Gate")
 
     steps = [
         ("Backend Core Tests", test_backend_core),
         ("Safety Engine Matrix", test_safety_engine),
+        ("Geo & Weather Fixes", test_geo_and_weather_fixes),
         ("IDW LOSOCV Validation", test_idw_validation),
         ("Sub-Millisecond Benchmark", test_latency_benchmark),
         ("FastAPI REST Integration", test_api_integration),

@@ -7,9 +7,8 @@ console.log('[HeatShield AI] Current directory:', process.cwd());
 if (fs.existsSync('frontend')) {
   console.log('[HeatShield AI] Running in root directory. Building frontend subproject...');
   execSync('npm --prefix frontend install && npm --prefix frontend run build', { stdio: 'inherit' });
-  if (!fs.existsSync('dist')) {
-    fs.mkdirSync('dist', { recursive: true });
-  }
+  fs.rmSync('dist', { recursive: true, force: true });
+  fs.mkdirSync('dist', { recursive: true });
   fs.cpSync('frontend/dist', 'dist', { recursive: true, force: true });
   console.log('[HeatShield AI] Synced frontend/dist to root dist directory.');
 } else {

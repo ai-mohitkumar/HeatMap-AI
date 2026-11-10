@@ -21,9 +21,9 @@ interface MobileAlertsProps {
   riskLevel: string;
   tempC: number;
   feelsLikeC?: number;
-  currentLat?: number;
-  currentLon?: number;
-  selectedStationId?: string;
+  currentLat?: number | null;
+  currentLon?: number | null;
+  selectedStationId?: string | null;
 }
 
 export const MobileAlerts: React.FC<MobileAlertsProps> = ({
@@ -31,9 +31,9 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
   riskLevel,
   tempC,
   feelsLikeC = tempC + 4,
-  currentLat = 25.5941,
-  currentLon = 85.1376,
-  selectedStationId = '42181'
+  currentLat = null,
+  currentLon = null,
+  selectedStationId
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'emergency' | 'alerts' | 'triage' | 'shelters'>('emergency');
   const [permission, setPermission] = useState<NotificationPermissionStatus>('default');
@@ -44,7 +44,11 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
 
   useEffect(() => {
     setPermission(notificationService.getPermission());
-    loadShelters(selectedStationId);
+    if (selectedStationId) {
+      loadShelters(selectedStationId);
+    } else {
+      setShelters([]);
+    }
   }, [selectedStationId]);
 
   const loadShelters = async (stId: string) => {
@@ -81,12 +85,19 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
     setTimeout(() => setTestSuccess(null), 4000);
   };
 
-  // Pre-formatted Emergency SOS message with coordinates and Google Maps pin
-  const rawEmergencyMessage =
-    `EMERGENCY ALERT: I am experiencing severe heat exhaustion/stroke symptoms in ${locationName}. ` +
-    `Exact GPS: Lat ${currentLat.toFixed(4)}, Lon ${currentLon.toFixed(4)}. ` +
-    `Location Pin: https://maps.google.com/?q=${currentLat.toFixed(5)},${currentLon.toFixed(5)} ` +
-    `Please dispatch emergency assistance immediately!`;
+  const hasVerifiedCoords =
+    currentLat !== null &&
+    currentLon !== null &&
+    Number.isFinite(currentLat) &&
+    Number.isFinite(currentLon);
+
+  // Pre-formatted Emergency SOS message with coordinates ONLY when verified (never fake Patna GPS)
+  const rawEmergencyMessage = hasVerifiedCoords
+    ? `EMERGENCY ALERT: I am experiencing severe heat exhaustion/stroke symptoms in ${locationName}. ` +
+      `Exact GPS: Lat ${currentLat!.toFixed(5)}, Lon ${currentLon!.toFixed(5)}. ` +
+      `Location Pin: https://maps.google.com/?q=${currentLat!.toFixed(5)},${currentLon!.toFixed(5)} ` +
+      `Please dispatch emergency assistance immediately!`
+    : `EMERGENCY ALERT: I am experiencing severe heat exhaustion/stroke symptoms (${locationName !== 'Location Unavailable' ? locationName : 'GPS coordinates unavailable — please call me back to confirm location'}). Please dispatch emergency assistance immediately!`;
 
   const emergencyHelplines = [
     {
@@ -214,7 +225,9 @@ export const MobileAlerts: React.FC<MobileAlertsProps> = ({
                 1-Tap GPS Emergency Broadcast
               </span>
               <span className="text-[10px] font-mono text-rose-300">
-                Lat: {currentLat.toFixed(2)}°, Lon: {currentLon.toFixed(2)}°
+                {hasVerifiedCoords
+                  ? `Lat: ${currentLat!.toFixed(4)}°, Lon: ${currentLon!.toFixed(4)}°`
+                  : 'GPS Unavailable'}
               </span>
             </div>
 

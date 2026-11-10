@@ -29125,13 +29125,14 @@ export function findNearestDistrictClient(
   latitude: number;
   longitude: number;
 } {
+  const first = ALL_INDIA_DISTRICTS[0];
   let best = {
-    district_name: 'Patna',
-    state_name: 'Bihar',
-    state_code: 'BR',
+    district_name: first?.district_name ?? '',
+    state_name: first?.state_name ?? '',
+    state_code: first?.state_code ?? '',
     distance_km: Infinity,
-    latitude: 25.5941,
-    longitude: 85.1376
+    latitude: first?.latitude ?? 0,
+    longitude: first?.longitude ?? 0
   };
 
   const toRad = Math.PI / 180;

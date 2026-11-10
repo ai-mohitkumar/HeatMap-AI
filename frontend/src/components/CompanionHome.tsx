@@ -6,11 +6,19 @@ import type {
   SymptomCheckResult,
   LanguageCode,
   LocationPredictionResponse,
+  LiveWeatherResponse,
+  LocationSourceType,
+  ReverseGeocodeSource,
   UserLocation
 } from '../types';
 import { getTranslation } from '../utils/localization';
 import { initiatePhoneCall } from '../utils/phoneCall';
 import { OFFLINE_STATIONS } from '../utils/offlineEngine';
+import {
+  acquireBestLocation,
+  reverseGeocodeCoords,
+  formatLocationConfidence
+} from '../utils/geolocationService';
 import {
   Flame,
   Droplets,
@@ -74,8 +82,12 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
   const [userLat, setUserLat] = useState<number | null>(null);
   const [userLon, setUserLon] = useState<number | null>(null);
   const [userAccuracy, setUserAccuracy] = useState<number | null>(null);
+  const [locationSource, setLocationSource] = useState<LocationSourceType>('manual');
+  const [reverseSource, setReverseSource] = useState<ReverseGeocodeSource>('unavailable');
+  const [resolvedPlaceName, setResolvedPlaceName] = useState<string | null>(null);
   const [locationPrediction, setLocationPrediction] = useState<LocationPredictionResponse | null>(null);
-  const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('Just now');
+  const [liveWeather, setLiveWeather] = useState<LiveWeatherResponse | null>(null);
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<string>('Station baseline');
   const [isWatchingLocation, setIsWatchingLocation] = useState<boolean>(false);
   const watchIdRef = useRef<number | null>(null);
   const [showGpsModal, setShowGpsModal] = useState<boolean>(false);
@@ -96,27 +108,53 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
     };
   }, []);
 
-  // Check and load recently cached GPS location on mount
+  // Check and load recently cached GPS location on mount (expire entries older than 15 minutes)
   useEffect(() => {
     const cached = localStorage.getItem("heatshield_location");
     if (cached) {
       try {
         const loc: UserLocation = JSON.parse(cached);
+        const ageMs = Date.now() - Number(loc.timestamp || 0);
+        if (
+          !Number.isFinite(loc.latitude) ||
+          !Number.isFinite(loc.longitude) ||
+          !Number.isFinite(ageMs) ||
+          ageMs < 0 ||
+          ageMs > 15 * 60 * 1000
+        ) {
+          localStorage.removeItem("heatshield_location");
+          return;
+        }
+        const acc = loc.accuracy != null ? Math.round(loc.accuracy) : null;
+        const src: LocationSourceType = acc != null && acc > 1000 ? 'ip_geolocation' : 'hardware_gps';
         setUserLat(loc.latitude);
         setUserLon(loc.longitude);
-        setUserAccuracy(Math.round(loc.accuracy || 18));
+        setUserAccuracy(acc);
+        setLocationSource(src);
         const mode = (typeof navigator !== 'undefined' && !navigator.onLine) ? 'offline' : 'online';
-        api.predictLocation(loc.latitude, loc.longitude, loc.accuracy, mode)
-          .then(res => {
+        Promise.all([
+          api.predictLocation(loc.latitude, loc.longitude, acc ?? undefined, mode, src),
+          api.getLiveWeather(loc.latitude, loc.longitude),
+          reverseGeocodeCoords(loc.latitude, loc.longitude)
+        ])
+          .then(([res, wx, rev]) => {
             setLocationPrediction(res);
+            setLiveWeather(wx);
             setAssessment(res.risk_assessment);
+            setReverseSource(rev.reverseSource);
+            setResolvedPlaceName(
+              rev.districtName && rev.districtName.toLowerCase() !== rev.placeName.toLowerCase()
+                ? `${rev.placeName}, ${rev.districtName}`
+                : rev.placeName
+            );
             setIsGpsActive(true);
-            const d = new Date(loc.timestamp || Date.now());
-            setLastUpdatedTime(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST');
+            const ts = wx.observed_at ? new Date(wx.observed_at) : new Date(loc.timestamp || Date.now());
+            setLastUpdatedTime(ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
           })
           .catch(err => console.warn('Cached prediction init error:', err));
       } catch (e) {
         console.warn('Failed to parse cached location:', e);
+        localStorage.removeItem("heatshield_location");
       }
     }
   }, []);
@@ -156,11 +194,23 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
         if (found) {
           setUserLat(found.latitude);
           setUserLon(found.longitude);
-          setUserAccuracy(50);
+          setUserAccuracy(null);
+          setLocationSource('manual');
+          setResolvedPlaceName(`${found.station_name}, IN`);
+          setReverseSource('manual');
           const currentMode = (typeof navigator !== 'undefined' && !navigator.onLine) ? 'offline' : 'online';
-          api.predictLocation(found.latitude, found.longitude, 50, currentMode)
-            .then(res => setLocationPrediction(res))
-            .catch(() => {});
+          Promise.all([
+            api.predictLocation(found.latitude, found.longitude, undefined, currentMode, 'manual'),
+            api.getLiveWeather(found.latitude, found.longitude)
+          ])
+            .then(([res, wx]) => {
+              setLocationPrediction(res);
+              setLiveWeather(wx);
+              if (wx.observed_at) {
+                setLastUpdatedTime(new Date(wx.observed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+              }
+            })
+            .catch(err => console.warn('Station telemetry sync warning:', err));
         }
       }
     } catch (err) {
@@ -170,78 +220,72 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
     }
   };
 
-  const handleUseExactLiveLocation = () => {
-    if (!navigator.geolocation) {
-      setGpsStatusMessage('❌ Geolocation is not supported by your browser.');
-      return;
-    }
-
+  const handleUseExactLiveLocation = async () => {
     setIsGpsLoading(true);
-    setGpsStatusMessage('🛰️ Requesting exact Satellite GNSS coordinates (high-accuracy mode)...');
+    setGpsStatusMessage('🛰️ Requesting verified device location & reverse geocoding...');
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const lat = position.coords.latitude;
-          const lon = position.coords.longitude;
-          const accuracy = Math.round(position.coords.accuracy || 18);
-          const timestamp = position.timestamp || Date.now();
+    try {
+      const geo = await acquireBestLocation((msg) => setGpsStatusMessage(msg));
+      if (geo.status !== 'resolved' || geo.latitude == null || geo.longitude == null) {
+        setIsGpsActive(false);
+        setGpsStatusMessage(
+          `🔒 Location unavailable: ${geo.errorReason || 'GPS and IP lookup could not determine your position.'} Please select your city from the dropdown.`
+        );
+        return;
+      }
 
-          setUserLat(lat);
-          setUserLon(lon);
-          setUserAccuracy(accuracy);
+      const lat = geo.latitude;
+      const lon = geo.longitude;
+      const accuracy = geo.accuracyM;
 
-          // Store GPS coordinates locally
-          const userLoc: UserLocation = {
-            latitude: lat,
-            longitude: lon,
-            accuracy,
-            timestamp
-          };
-          localStorage.setItem("heatshield_location", JSON.stringify(userLoc));
+      setUserLat(lat);
+      setUserLon(lon);
+      setUserAccuracy(accuracy);
+      setLocationSource(geo.source);
+      setReverseSource(geo.reverseSource);
+      setResolvedPlaceName(geo.displayName);
 
-          const now = new Date();
-          const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST';
-          setLastUpdatedTime(timeStr);
+      // Persist raw GNSS/IP fix
+      const userLoc: UserLocation = {
+        latitude: lat,
+        longitude: lon,
+        accuracy: accuracy ?? 0,
+        timestamp: geo.timestamp
+      };
+      localStorage.setItem("heatshield_location", JSON.stringify(userLoc));
 
-          // Predict location heat-risk using IDW multi-station interpolation
-          const currentMode = (typeof navigator !== 'undefined' && !navigator.onLine) ? 'offline' : 'online';
-          const res = await api.predictLocation(lat, lon, accuracy, currentMode);
-          setLocationPrediction(res);
-          setAssessment(res.risk_assessment);
+      const currentMode = (typeof navigator !== 'undefined' && !navigator.onLine) ? 'offline' : 'online';
+      const [res, wx] = await Promise.all([
+        api.predictLocation(lat, lon, accuracy ?? undefined, currentMode, geo.source),
+        api.getLiveWeather(lat, lon)
+      ]);
+      setLocationPrediction(res);
+      setLiveWeather(wx);
+      setAssessment(res.risk_assessment);
 
-          if (res.data_source.stations_used.length > 0) {
-            onSelectStation(res.data_source.stations_used[0].station_id);
-          }
+      const obsTime = wx.observed_at ? new Date(wx.observed_at) : new Date();
+      setLastUpdatedTime(obsTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
 
-          setIsGpsActive(true);
-          if (accuracy > 500) {
-            setGpsStatusMessage(`⚠️ Low GPS Precision (±${accuracy}m). Multi-station IDW active, but cellular triangulation was used instead of GNSS.`);
-          } else {
-            setGpsStatusMessage(null);
-          }
-        } catch (err) {
-          console.error('Failed to predict exact location heat risk:', err);
-          setGpsStatusMessage('⚠️ Spatial interpolation fallback: using closest synoptic station dataset.');
-        } finally {
-          setIsGpsLoading(false);
-        }
-      },
-      (error) => {
-        console.warn('Geolocation error:', error);
-        let msg = 'Location access denied or unavailable.';
-        if (error.code === error.PERMISSION_DENIED) {
-          msg = '🔒 GPS Permission Denied: Location permission was blocked by the browser. Allow location in your address bar or select your city manually.';
-        } else if (error.code === error.TIMEOUT) {
-          msg = '⏱️ GPS Satellite Timeout: GNSS fix timed out (15s). Weak satellite visibility. Defaulting to station nearest to current coordinates.';
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          msg = '📡 GNSS Position Unavailable: Internal device location service is turned off or unreachable.';
-        }
-        setGpsStatusMessage(msg);
-        setIsGpsLoading(false);
-      },
-      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
-    );
+      if (res.data_source.stations_used.length > 0 && geo.source === 'manual') {
+        onSelectStation(res.data_source.stations_used[0].station_id);
+      }
+
+      setIsGpsActive(true);
+      if (geo.isApproximateLocation || (accuracy != null && accuracy > 500)) {
+        setGpsStatusMessage(
+          `⚠️ Approximate Location (${geo.displayName}${accuracy != null ? `, ±${accuracy}m` : ''}) resolved via ${geo.source === 'ip_geolocation' ? 'IP network' : 'coarse fix'}. Allow exact GPS for pinpoint readings.`
+        );
+      } else {
+        setGpsStatusMessage(
+          `✅ Verified GPS (${geo.displayName}${accuracy != null ? `, ±${accuracy}m` : ''}).`
+        );
+      }
+    } catch (err) {
+      console.error('Failed to acquire/predict location heat risk:', err);
+      setGpsStatusMessage('⚠️ Location or weather evaluation encountered an error. Select a city manually.');
+    } finally {
+      setIsGpsLoading(false);
+    }
   };
 
   const toggleWatchLocation = () => {
@@ -258,16 +302,29 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
         async (position) => {
           const lat = position.coords.latitude;
           const lon = position.coords.longitude;
-          const accuracy = Math.round(position.coords.accuracy || 18);
+          const accuracy = Math.round(position.coords.accuracy);
+          const inferredSource: LocationSourceType = accuracy <= 150 ? 'hardware_gps' : 'network_cellular';
           setUserLat(lat);
           setUserLon(lon);
           setUserAccuracy(accuracy);
+          setLocationSource(inferredSource);
           const mode = (typeof navigator !== 'undefined' && !navigator.onLine) ? 'offline' : 'online';
-          const res = await api.predictLocation(lat, lon, accuracy, mode);
+          const [res, wx, rev] = await Promise.all([
+            api.predictLocation(lat, lon, accuracy, mode, inferredSource),
+            api.getLiveWeather(lat, lon),
+            reverseGeocodeCoords(lat, lon)
+          ]);
           setLocationPrediction(res);
+          setLiveWeather(wx);
           setAssessment(res.risk_assessment);
-          const now = new Date();
-          setLastUpdatedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' IST');
+          setReverseSource(rev.reverseSource);
+          setResolvedPlaceName(
+            rev.districtName && rev.districtName.toLowerCase() !== rev.placeName.toLowerCase()
+              ? `${rev.placeName}, ${rev.districtName}`
+              : rev.placeName
+          );
+          const ts = wx.observed_at ? new Date(wx.observed_at) : new Date();
+          setLastUpdatedTime(ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
         },
         (err) => console.warn('watchPosition error:', err),
         { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
@@ -373,27 +430,29 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
               </span>
               <span
                 className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
-                  userLat
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                  userLat != null
+                    ? locationSource === 'ip_geolocation'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                     : 'bg-slate-700 text-slate-300'
                 }`}
               >
-                {userLat ? `🟢 GPS LOCKED (±${userAccuracy || 18}m)` : '⚪ GPS STANDBY'}
+                {userLat != null ? formatLocationConfidence(locationSource, userAccuracy).shortTag : 'STATION REFERENCE'}
               </span>
-              {userLat && (
+              {userLat != null && userLon != null && (
                 <span className="text-slate-300 font-mono text-[11px]">
-                  {userLat.toFixed(4)}° N, {userLon?.toFixed(4)}° E
+                  {userLat.toFixed(4)}° N, {userLon.toFixed(4)}° E
                 </span>
               )}
             </div>
             <p className="text-[11px] text-slate-300">
-              {isOffline ? (
-                <span className="text-amber-300 font-semibold">
-                  🟠 OFFLINE MODE: Using local NOAA GSOD 2022–2025 Multi-Station IDW (Offline Prediction)
+              {liveWeather?.is_live ? (
+                <span className="text-emerald-300 font-semibold">
+                  🟢 LIVE OBSERVATION: {liveWeather.provider || 'Open-Meteo'} • Updated {lastUpdatedTime} + NOAA GSOD Baseline
                 </span>
               ) : (
-                <span className="text-emerald-300 font-semibold">
-                  🟢 ONLINE: Live Atmospheric Data + GSOD Historical Multi-Station Baseline
+                <span className="text-amber-300 font-semibold">
+                  🟠 OFFLINE IDW ESTIMATE: Local NOAA GSOD 2022–2025 Multi-Station Baseline (Not Live Weather)
                 </span>
               )}
             </p>
@@ -534,23 +593,24 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
 
           <div className="text-lg sm:text-2xl font-black text-white font-mono flex flex-wrap items-center gap-2.5">
             <span>
-              {userLat
-                ? `${userLat.toFixed(4)}° N, ${userLon?.toFixed(4)}° E`
-                : '31.6340° N, 74.8723° E (Default Demo Coordinates)'}
+              {userLat != null && userLon != null
+                ? `${resolvedPlaceName ? `${resolvedPlaceName} • ` : ''}${userLat.toFixed(4)}° N, ${userLon.toFixed(4)}° E`
+                : 'Coordinates unavailable — select a city or grant GPS'}
             </span>
             <span className="text-xs px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-sans border border-slate-700 font-semibold">
-              Accuracy: ±{userAccuracy || 18} m
+              {formatLocationConfidence(locationSource, userAccuracy).shortTag}
             </span>
           </div>
 
           <p className="text-xs text-slate-400">
             Weather source:{' '}
-            <strong className="text-cyan-300">
-              {locationPrediction
-                ? locationPrediction.data_source.provider_note
-                : 'Nearest GSOD + spatial interpolation (IDW 4 Stations)'}
+            <strong className={liveWeather?.is_live ? 'text-emerald-300' : 'text-amber-300'}>
+              {liveWeather?.is_live
+                ? `Live • ${liveWeather.provider || 'Open-Meteo'}`
+                : locationPrediction?.data_source.provider_note ||
+                  'Offline IDW Estimate • NOAA GSOD Baseline (not live)'}
             </strong>{' '}
-            • Last updated: <span className="text-slate-300 font-mono font-bold">{lastUpdatedTime}</span>
+            • Updated: <span className="text-slate-300 font-mono font-bold">{lastUpdatedTime}</span>
           </p>
         </div>
 
@@ -602,7 +662,7 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
                 {assessment.tier_badge}
               </span>
               <span className="text-sm font-semibold text-gray-300">
-                {assessment.station_name}
+                {resolvedPlaceName || assessment.station_name}
               </span>
             </div>
 
@@ -621,13 +681,16 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
                 <span>1. How Hot Is It?</span>
               </div>
               <div className="text-3xl font-black text-white">
-                {assessment.current_weather.temperature_c}°C
+                {(liveWeather?.is_live ? liveWeather.temperature_c : assessment.current_weather.temperature_c).toFixed(1)}°C
               </div>
               <div className="text-xs text-gray-300 mt-1">
-                {getTranslation(lang, 'feels_like')}: <strong className="text-amber-400">{assessment.current_weather.heat_index_c}°C</strong>
+                {getTranslation(lang, 'feels_like')}:{' '}
+                <strong className="text-amber-400">
+                  {(liveWeather?.is_live ? liveWeather.heat_index_c : assessment.current_weather.heat_index_c).toFixed(1)}°C
+                </strong>
               </div>
               <div className="text-[11px] text-gray-400 mt-0.5">
-                Humidity: {assessment.current_weather.relative_humidity_pct}%
+                Humidity: {Math.round(liveWeather?.is_live ? liveWeather.relative_humidity_pct : assessment.current_weather.relative_humidity_pct)}%
               </div>
             </div>
 
@@ -727,24 +790,24 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Online / Offline Data Mode Badge */}
+            {/* Live vs Offline Weather Provenance Badge */}
             <span
               className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
-                locationPrediction?.data_source.mode === 'offline' || isOffline
+                !liveWeather?.is_live || isOffline
                   ? 'bg-amber-950/50 border-amber-500/40 text-amber-300'
                   : 'bg-emerald-950/50 border-emerald-500/40 text-emerald-300'
               }`}
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  locationPrediction?.data_source.mode === 'offline' || isOffline
+                  !liveWeather?.is_live || isOffline
                     ? 'bg-amber-400 animate-pulse'
                     : 'bg-emerald-400'
                 }`}
               />
-              {locationPrediction?.data_source.mode === 'offline' || isOffline
-                ? 'Offline Mode (Local IDW Engine)'
-                : 'Online Mode (Open-Meteo + NOAA GSOD)'}
+              {liveWeather?.is_live && !isOffline
+                ? 'Live Observation (Open-Meteo) + NOAA Baseline'
+                : 'Offline IDW Estimate (NOAA GSOD Baseline)'}
             </span>
 
             {/* Model Confidence Badge */}
@@ -766,11 +829,13 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
             <div className="text-base font-black text-white mt-1 font-mono tracking-tight">
               {userLat != null && userLon != null
                 ? `${userLat.toFixed(4)}° N, ${userLon.toFixed(4)}° E`
-                : '31.6340° N, 74.8723° E'}
+                : 'Unavailable'}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              <span>Source: {locationPrediction?.location_source || (isGpsActive ? 'Live GPS' : 'Station Calibration')}</span>
+              <span className={`inline-block w-1.5 h-1.5 rounded-full ${locationSource === 'hardware_gps' || locationSource === 'native_android' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+              <span>
+                Source: {locationSource === 'hardware_gps' || locationSource === 'native_android' ? 'Hardware GPS' : locationSource === 'ip_geolocation' ? 'Approx IP' : locationSource} ({reverseSource})
+              </span>
             </div>
           </div>
 
@@ -778,13 +843,13 @@ export const CompanionHome: React.FC<CompanionHomeProps> = ({
           <div className="bg-slate-800/50 border border-slate-700/60 p-4 rounded-2xl">
             <div className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
               <Radio className="w-3.5 h-3.5" />
-              <span>Fix Accuracy</span>
+              <span>Location Confidence</span>
             </div>
             <div className="text-base font-black text-white mt-1 font-mono">
-              ±{userAccuracy || 18} meters
+              {userAccuracy != null ? `±${Math.round(userAccuracy)} meters` : 'N/A'}
             </div>
             <div className="text-[11px] text-slate-400 mt-1">
-              Satellite GNSS / High-Accuracy API
+              {formatLocationConfidence(locationSource, userAccuracy).detail}
             </div>
           </div>
 

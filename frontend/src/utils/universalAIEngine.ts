@@ -63,8 +63,8 @@ export type FallbackLocationInput = string | {
 
 export function normalizeFallbackLocation(fallback?: FallbackLocationInput): {
   name: string;
-  lat: number;
-  lon: number;
+  lat?: number;
+  lon?: number;
   tempC?: number;
   feelsLikeC?: number;
   humidity?: number;
@@ -89,8 +89,8 @@ export function normalizeFallbackLocation(fallback?: FallbackLocationInput): {
   const f = fallback || {};
   return {
     name: f.name || 'Your Location',
-    lat: f.lat ?? 28.58,
-    lon: f.lon ?? 77.20,
+    lat: f.lat,
+    lon: f.lon,
     tempC: f.tempC,
     feelsLikeC: f.feelsLikeC,
     humidity: f.humidity,

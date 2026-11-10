@@ -10,10 +10,11 @@ import {
 } from 'lucide-react';
 
 interface HourlyForecastStripProps {
-  lat: number;
-  lon: number;
+  lat: number | null;
+  lon: number | null;
   stationId?: string;
   lang: LanguageCode;
+  externalForecast?: HourlyForecastResponse | null;
   onPeakRiskDetected?: (peakHi: number, peakTier: string) => void;
 }
 
@@ -22,10 +23,11 @@ export const HourlyForecastStrip: React.FC<HourlyForecastStripProps> = ({
   lon,
   stationId,
   lang,
+  externalForecast,
   onPeakRiskDetected
 }) => {
-  const [forecast, setForecast] = useState<HourlyForecastResponse | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [forecast, setForecast] = useState<HourlyForecastResponse | null>(externalForecast ?? null);
+  const [loading, setLoading] = useState<boolean>(!externalForecast && lat != null && lon != null);
   const [selectedHour, setSelectedHour] = useState<HourlyForecastItem | null>(null);
   const [viewMode, setViewMode] = useState<'both' | 'chart' | 'cards'>('both');
 
@@ -33,6 +35,28 @@ export const HourlyForecastStrip: React.FC<HourlyForecastStripProps> = ({
   const currentHourNum = new Date().getHours();
 
   useEffect(() => {
+    if (externalForecast !== undefined) {
+      setForecast(externalForecast);
+      setLoading(false);
+      if (externalForecast && externalForecast.hourly.length > 0) {
+        const curr =
+          externalForecast.hourly.find(h => h.hour_num === currentHourNum) ||
+          externalForecast.hourly.find(h => h.is_peak) ||
+          externalForecast.hourly[0];
+        setSelectedHour(curr);
+        if (onPeakRiskDetected && externalForecast.peak_heat_index_c) {
+          onPeakRiskDetected(externalForecast.peak_heat_index_c, externalForecast.peak_tier);
+        }
+      }
+      return;
+    }
+
+    if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      setForecast(null);
+      setLoading(false);
+      return;
+    }
+
     let isMounted = true;
     const loadForecast = async () => {
       try {
@@ -57,7 +81,7 @@ export const HourlyForecastStrip: React.FC<HourlyForecastStripProps> = ({
 
     loadForecast();
     return () => { isMounted = false; };
-  }, [lat, lon, stationId]);
+  }, [lat, lon, stationId, externalForecast]);
 
   const getTierColor = (tier: string) => {
     switch (tier) {
@@ -119,6 +143,14 @@ export const HourlyForecastStrip: React.FC<HourlyForecastStripProps> = ({
     );
   }
 
+  if (lat == null || lon == null) {
+    return (
+      <div className="bg-[#131E3A]/70 border border-slate-800 rounded-2xl p-4 text-xs text-slate-400 flex items-center justify-between">
+        <span>Hourly forecast unavailable until a GPS fix or city is selected.</span>
+      </div>
+    );
+  }
+
   if (!forecast || forecast.hourly.length === 0) return null;
 
   const peakColors = getTierColor(forecast.peak_tier);
@@ -151,13 +183,25 @@ export const HourlyForecastStrip: React.FC<HourlyForecastStripProps> = ({
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="p-1 bg-amber-500/20 text-amber-400 rounded-lg">
               <Sun className="w-4 h-4" />
             </span>
             <h3 className="text-sm font-bold text-white tracking-wide">
               {getTranslation(lang, 'hourly_forecast', 'Hourly Heat Stress Forecast & Risk Curve')}
             </h3>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                forecast.is_live
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
+                  : 'bg-amber-950/60 text-amber-300 border-amber-500/40'
+              }`}
+              title={forecast.fallback_reason || undefined}
+            >
+              {forecast.is_live
+                ? `Forecast • Open-Meteo${forecast.timezone ? ` (${forecast.timezone})` : ''}`
+                : 'Offline Diurnal Estimate'}
+            </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
             {getTranslation(lang, 'hourly_strip_subtitle', 'Interactive Diurnal Thermal Profile & Danger Window Prediction')}

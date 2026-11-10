@@ -1,3 +1,7 @@
+import {
+  computeHeatIndexC,
+  classifyHeatIndexTier
+} from './heatIndex';
 import type {
   NearestStationResponse,
   SafetyRiskAssessment,
@@ -1481,7 +1485,9 @@ export function interpolateLocationFeaturesOffline(
   userLon: number,
   accuracyM: number = 18,
   k: number = 4,
-  p: number = 2.0
+  p: number = 2.0,
+  locationSource: string = 'GPS',
+  fallbackReason?: string
 ): LocationPredictionResponse {
   const distances = OFFLINE_STATIONS.map(st => ({
     station: st,
@@ -1511,19 +1517,8 @@ export function interpolateLocationFeaturesOffline(
   const interpDewPoint = Math.round(topK.reduce((acc, item, idx) => acc + item.station.dew_point_c * normWeights[idx], 0) * 10) / 10;
   const interpRh = Math.round(topK.reduce((acc, item, idx) => acc + item.station.relative_humidity_pct * normWeights[idx], 0) * 10) / 10;
 
-  // Calculate Rothfusz Heat Index
-  const tf = interpTemp * 1.8 + 32.0;
-  const hiF =
-    -42.379 +
-    2.04901523 * tf +
-    10.14333127 * interpRh -
-    0.22475541 * tf * interpRh -
-    0.00683783 * tf * tf -
-    0.05481717 * interpRh * interpRh +
-    0.00122874 * tf * tf * interpRh +
-    0.00085282 * tf * interpRh * interpRh -
-    0.00000199 * tf * tf * interpRh * interpRh;
-  const heatIndexC = Math.round(((hiF - 32.0) / 1.8) * 10) / 10;
+  // Calculate official NOAA Rothfusz Heat Index (°C) with Steadman <80°F screening
+  const heatIndexC = computeHeatIndexC(interpTemp, interpRh);
 
   // Continuous HSI
   const hsi = Math.round((0.5 * interpTemp + 0.4 * heatIndexC + 0.1 * interpMaxTemp - 0.05 * 12.0) * 10) / 10;
@@ -1555,14 +1550,20 @@ export function interpolateLocationFeaturesOffline(
     location: {
       latitude: Math.round(userLat * 10000) / 10000,
       longitude: Math.round(userLon * 10000) / 10000,
-      accuracy_m: accuracyM
+      accuracy_m: accuracyM,
+      source: locationSource
     },
-    location_source: 'GPS',
+    location_source: locationSource,
     data_source: {
       mode: 'offline',
+      source_type: 'offline_estimate',
+      is_live: false,
+      provider: 'NOAA GSOD 2022–2025 IDW',
+      fallback_reason: fallbackReason ?? null,
       stations_used: stationsUsed,
       interpolation: `Inverse Distance Weighting (IDW, p=${p})`,
-      provider_note: 'Local NOAA GSOD 2022–2025 multi-station IDW spatial interpolation (100% On-Device)'
+      provider_note: 'Offline historical NOAA GSOD 2022–2025 IDW spatial estimate (not live observation)',
+      research_baseline: 'NOAA GSOD 2022–2025 (46 synoptic stations)'
     },
     weather: {
       temperature: interpTemp,
@@ -1595,7 +1596,8 @@ export function interpolateLocationFeaturesOffline(
 export function getOfflineHourlyForecast(
   userLat: number,
   userLon: number,
-  stationId?: string
+  stationId?: string,
+  fallbackReason?: string
 ): HourlyForecastResponse {
   let station = stationId ? OFFLINE_STATIONS.find(s => s.station_id === stationId) : undefined;
   if (!station) {
@@ -1625,34 +1627,19 @@ export function getOfflineHourlyForecast(
     const solarFactor = Math.sin(Math.max(0, Math.min(Math.PI, ((h - 6) / 9.5) * (Math.PI / 2))));
     const curTemp = Math.round((minTemp + (maxTemp - minTemp) * Math.pow(solarFactor, 1.2)) * 10) / 10;
     const curRh = Math.max(15, Math.min(95, Math.round(baseRh - (solarFactor * 22.0))));
-    
-    // Rothfusz Heat Index calculation
-    const T = curTemp;
-    const R = curRh;
-    let hi = 0.5 * (T + 61.0 + ((T - 68.0) * 1.2) + (R * 0.094));
-    if (hi >= 80) {
-      hi = -42.379 + 2.04901523 * T + 10.14333127 * R - 0.22475541 * T * R
-        - 6.837651e-3 * T * T - 5.481717e-2 * R * R + 1.22874e-3 * T * T * R
-        + 8.5282e-4 * T * R * R - 1.99e-6 * T * T * R * R;
-    }
-    const heatIndexC = Math.round((T >= 27 ? Math.max(T, hi) : T) * 10) / 10;
 
-    let tier: 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme';
+    const heatIndexC = computeHeatIndexC(curTemp, curRh);
+    const tier = classifyHeatIndexTier(heatIndexC);
     let advice = "Safe for general outdoor activities.";
-    if (heatIndexC <= 29) {
-      tier = 'Low';
+    if (tier === 'Low') {
       advice = "Coolest part of the day. Ideal for outdoor chores.";
-    } else if (heatIndexC <= 37) {
-      tier = 'Moderate';
+    } else if (tier === 'Moderate') {
       advice = "Drink 250ml water per hour; light shade advised.";
-    } else if (heatIndexC <= 44) {
-      tier = 'High';
+    } else if (tier === 'High') {
       advice = "Laborers take 15-min rest in shade per hour.";
-    } else if (heatIndexC <= 53) {
-      tier = 'Very High';
+    } else if (tier === 'Very High') {
       advice = "Danger of heat cramps & exhaustion. Avoid direct sun.";
     } else {
-      tier = 'Extreme';
       advice = "Extreme heatstroke danger. Halt outdoor exertion.";
     }
 
@@ -1683,13 +1670,7 @@ export function getOfflineHourlyForecast(
 
   const peakStartHour = peakHourNum > 12 ? `${peakHourNum - 12}:00 PM` : `${peakHourNum}:00 AM`;
   const peakEndHour = (peakHourNum + 2) > 12 ? `${(peakHourNum + 2) - 12}:00 PM` : `${peakHourNum + 2}:00 AM`;
-
-  let peakTier: 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme' = 'Low';
-  if (peakHeatIndex <= 29) peakTier = 'Low';
-  else if (peakHeatIndex <= 37) peakTier = 'Moderate';
-  else if (peakHeatIndex <= 44) peakTier = 'High';
-  else if (peakHeatIndex <= 53) peakTier = 'Very High';
-  else peakTier = 'Extreme';
+  const peakTier = classifyHeatIndexTier(peakHeatIndex);
 
   return {
     station_id: station.station_id,
@@ -1700,6 +1681,11 @@ export function getOfflineHourlyForecast(
     peak_heat_index_c: peakHeatIndex,
     peak_tier: peakTier,
     generated_at: new Date().toISOString(),
+    data_source: 'offline_idw_diurnal',
+    source_type: 'offline_estimate',
+    provider: 'NOAA GSOD Diurnal Model',
+    is_live: false,
+    fallback_reason: fallbackReason,
     hourly
   };
 }

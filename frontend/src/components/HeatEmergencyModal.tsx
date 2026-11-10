@@ -22,8 +22,8 @@ interface HeatEmergencyModalProps {
   heatIndexC: number;
   temperatureC?: number;
   riskTier?: string;
-  userLat?: number;
-  userLon?: number;
+  userLat?: number | null;
+  userLon?: number | null;
   lang: LanguageCode;
   onNavigateToShelters?: () => void;
   onBroadcastSafety?: () => void;
@@ -260,7 +260,9 @@ export const HeatEmergencyModal: React.FC<HeatEmergencyModalProps> = ({
             <button
               type="button"
               onClick={(e) => {
-                const gpsText = userLat && userLon ? ` Lat ${userLat.toFixed(4)}, Lon ${userLon.toFixed(4)}. Pin: https://maps.google.com/?q=${userLat},${userLon}` : '';
+                const gpsText = userLat != null && userLon != null
+                  ? ` Lat ${userLat.toFixed(4)}, Lon ${userLon.toFixed(4)}. Pin: https://maps.google.com/?q=${userLat},${userLon}`
+                  : ' Location coordinates unavailable.';
                 const sosMsg = `CRITICAL HEAT EMERGENCY: Severe heat stroke symptoms reported in ${locationName} (Feels-like ${heatIndexC}°C).${gpsText} Immediate ambulance or rescue required!`;
                 initiateEmergencySms(sosMsg, undefined, e);
               }}

@@ -6,9 +6,13 @@ cooling center locations, and community assistance networks.
 """
 
 from typing import Dict, Any, List, Optional
+import logging
 import re
 import numpy as np
 import pandas as pd
+from backend.ml.physics import compute_heat_index_c
+
+logger = logging.getLogger(__name__)
 
 class HeatSafetyEngine:
     """
@@ -301,18 +305,7 @@ class HeatSafetyEngine:
         if "heat_index_c" in station_record:
             hi = float(station_record["heat_index_c"])
         else:
-            # Rothfusz Heat Index calculation
-            t_f = temp * 9.0 / 5.0 + 32.0
-            if t_f < 80.0:
-                hi_f = 0.5 * (t_f + 61.0 + ((t_f - 68.0) * 1.2) + (rh * 0.094))
-            else:
-                hi_f = (
-                    -42.379 + 2.04901523 * t_f + 10.14333127 * rh
-                    - 0.22475541 * t_f * rh - 0.00683783 * (t_f ** 2)
-                    - 0.05481717 * (rh ** 2) + 0.00122874 * (t_f ** 2) * rh
-                    + 0.00085282 * t_f * (rh ** 2) - 0.00000199 * (t_f ** 2) * (rh ** 2)
-                )
-            hi = round((hi_f - 32.0) * 5.0 / 9.0, 1)
+            hi = compute_heat_index_c(temp, rh)
 
         if "heat_stress_index" in station_record:
             hsi = float(station_record["heat_stress_index"])
@@ -1267,12 +1260,13 @@ class HeatSafetyEngine:
         mode: str = "online",
         k: int = 4,
         p: float = 2.0,
-        profiles_list: Optional[List[Dict[str, Any]]] = None
+        profiles_list: Optional[List[Dict[str, Any]]] = None,
+        location_source: str = "GPS"
     ) -> Dict[str, Any]:
         """
         Predicts location-specific heat risk using Multi-Station Inverse Distance Weighting (IDW)
-        spatial interpolation over surrounding NOAA GSOD stations, optionally harmonized with
-        live current weather in online mode.
+        spatial interpolation over surrounding NOAA GSOD stations, or fetches current live weather
+        in online mode while keeping GSOD station weights as regional baseline metadata.
         """
         if df is None or len(df) == 0:
             raise ValueError("Dataset is empty.")
@@ -1341,7 +1335,7 @@ class HeatSafetyEngine:
                 "heat_index_c": round(hi, 1)
             })
 
-        # Calculate IDW interpolated weather features
+        # Calculate IDW interpolated weather features (offline climatology baseline)
         idw_temp = sum(t * w for t, w in zip(interp_temps, norm_weights))
         idw_max_temp = sum(t * w for t, w in zip(interp_max_temps, norm_weights))
         idw_dew_point = sum(d * w for d, w in zip(interp_dew_points, norm_weights))
@@ -1356,6 +1350,12 @@ class HeatSafetyEngine:
         final_wind = idw_wind
         final_pressure = idw_pressure
         data_source_mode = "offline"
+        is_live = False
+        source_type = "offline_estimate"
+        provider = "NOAA GSOD 2022–2025 IDW"
+        observed_at: Optional[str] = None
+        om_timezone: Optional[str] = None
+        fallback_reason: Optional[str] = "Requested offline mode" if mode != "online" else None
         provider_note = "Local NOAA GSOD 2022–2025 multi-station IDW spatial interpolation"
 
         # If online mode requested, query live Open-Meteo current observations
@@ -1366,41 +1366,50 @@ class HeatSafetyEngine:
                 url = (
                     f"https://api.open-meteo.com/v1/forecast?"
                     f"latitude={user_lat}&longitude={user_lon}&"
-                    f"current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,surface_pressure,wind_speed_10m"
+                    f"current=temperature_2m,relative_humidity_2m,dew_point_2m,apparent_temperature,surface_pressure,wind_speed_10m&"
+                    f"daily=temperature_2m_max&forecast_days=1&timezone=auto"
                 )
                 req = urllib.request.Request(url, headers={"User-Agent": "HeatShieldAI/1.0"})
-                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                with urllib.request.urlopen(req, timeout=2.5) as resp:
                     if resp.status == 200:
                         live_data = json.loads(resp.read().decode())
                         current = live_data.get("current", {})
                         if "temperature_2m" in current and current["temperature_2m"] is not None:
                             final_temp = float(current["temperature_2m"])
-                            final_rh = float(current.get("relative_humidity_2m", idw_rh))
-                            final_dew_point = float(current.get("dew_point_2m", idw_dew_point))
-                            final_wind = float(current.get("wind_speed_10m", idw_wind))
-                            final_pressure = float(current.get("surface_pressure", idw_pressure))
-                            final_max_temp = max(final_temp + 3.5, idw_max_temp)
+                            final_rh = float(current["relative_humidity_2m"]) if current.get("relative_humidity_2m") is not None else idw_rh
+                            final_dew_point = float(current["dew_point_2m"]) if current.get("dew_point_2m") is not None else idw_dew_point
+                            final_wind = float(current["wind_speed_10m"]) if current.get("wind_speed_10m") is not None else idw_wind
+                            final_pressure = float(current["surface_pressure"]) if current.get("surface_pressure") is not None else idw_pressure
+                            daily_max_list = live_data.get("daily", {}).get("temperature_2m_max", [])
+                            if daily_max_list and daily_max_list[0] is not None:
+                                final_max_temp = max(final_temp, float(daily_max_list[0]))
+                            else:
+                                final_max_temp = final_temp
                             data_source_mode = "online"
-                            provider_note = "Live Open-Meteo Current Observations harmonized with GSOD Multi-Station IDW Baseline"
-            except Exception:
-                # Graceful fallback to GSOD IDW
+                            is_live = True
+                            source_type = "live_observation"
+                            provider = "Open-Meteo Live API"
+                            observed_at = current.get("time")
+                            om_timezone = live_data.get("timezone")
+                            fallback_reason = None
+                            provider_note = "Live Open-Meteo current observations (regional GSOD stations retained as research baseline context)"
+                        else:
+                            fallback_reason = "Open-Meteo response omitted current.temperature_2m"
+                            logger.warning("Open-Meteo response missing temperature_2m for (%.4f, %.4f)", user_lat, user_lon)
+                    else:
+                        fallback_reason = f"Open-Meteo HTTP {resp.status}"
+                        logger.warning("Open-Meteo returned HTTP %s for (%.4f, %.4f)", resp.status, user_lat, user_lon)
+            except Exception as exc:
+                logger.warning("Open-Meteo live lookup failed for (%.4f, %.4f): %s", user_lat, user_lon, exc)
                 data_source_mode = "offline"
+                is_live = False
+                source_type = "offline_estimate"
+                provider = "NOAA GSOD 2022–2025 IDW"
+                fallback_reason = str(exc)
                 provider_note = "Fallback to Local NOAA GSOD 2022–2025 IDW (Live Weather Service Offline/Unreachable)"
 
-        # Rothfusz Heat Index calculation
-        tf = final_temp * 1.8 + 32.0
-        hi_f = (
-            -42.379
-            + 2.04901523 * tf
-            + 10.14333127 * final_rh
-            - 0.22475541 * tf * final_rh
-            - 0.00683783 * (tf ** 2)
-            - 0.05481717 * (final_rh ** 2)
-            + 0.00122874 * (tf ** 2) * final_rh
-            + 0.00085282 * tf * (final_rh ** 2)
-            - 0.00000199 * (tf ** 2) * (final_rh ** 2)
-        )
-        heat_index_c = round((hi_f - 32.0) / 1.8, 1)
+        # Rothfusz Heat Index calculation (official NOAA thresholds & RHS adjustments)
+        heat_index_c = compute_heat_index_c(final_temp, final_rh)
 
         # Continuous Heat Stress Index
         hsi = 0.5 * final_temp + 0.4 * heat_index_c + 0.1 * final_max_temp - 0.05 * final_wind
@@ -1468,14 +1477,28 @@ class HeatSafetyEngine:
             "location": {
                 "latitude": round(user_lat, 4),
                 "longitude": round(user_lon, 4),
-                "accuracy_m": round(float(accuracy_m or 18.0), 1)
+                "accuracy_m": round(float(accuracy_m), 1) if accuracy_m is not None else None,
+                "source": location_source
             },
-            "location_source": "GPS",
+            "location_source": location_source,
             "data_source": {
                 "mode": data_source_mode,
+                "source_type": source_type,
+                "is_live": is_live,
+                "provider": provider,
+                "observed_at": observed_at,
+                "timezone": om_timezone,
+                "fallback_reason": fallback_reason,
                 "stations_used": stations_used,
                 "interpolation": f"Inverse Distance Weighting (IDW, p={p})",
-                "provider_note": provider_note
+                "provider_note": provider_note,
+                "research_baseline": {
+                    "source": "NOAA GSOD 2022–2025 IDW",
+                    "mean_temp_c": round(idw_temp, 1),
+                    "max_temp_c": round(idw_max_temp, 1),
+                    "relative_humidity_pct": round(idw_rh, 1),
+                    "dew_point_c": round(idw_dew_point, 1)
+                }
             },
             "weather": {
                 "temperature": round(final_temp, 1),

@@ -1,67 +1,65 @@
-# HeatShield AI — Deployment Guide (Render & Vercel)
+# HeatShield AI — Deployment Guide (Render, Vercel & Docker)
 
-This guide provides end-to-end instructions for deploying HeatShield AI across **Render** (dedicated Python/Docker backend) and **Vercel** (high-performance React SPA with optional serverless Python functions).
+This guide covers deploying HeatShield AI across **Render** (Python/FastAPI ML backend), **Vercel** (React + Vite PWA frontend), and **Docker** (unified single-container deployment).
 
 ---
 
-## 🚀 Option 1: Deploy Backend on Render (Recommended for ML & RQ1–6)
+## Option 1: Deploy Backend on Render (ML Engine, Weather & Geo APIs)
 
-Render provides persistent containers without serverless cold-start limitations, making it ideal for the complete scientific stack (`scikit-learn`, `numpy`, `pandas`, `FastAPI`, `Uvicorn`).
+Render provides persistent containers ideal for `scikit-learn`, `numpy`, `pandas`, `FastAPI`, and `Uvicorn`.
 
 ### 1-Click / Blueprint Deployment
-1. Push your repository to GitHub: `https://github.com/<your-username>/HeatMap-AI`
-2. Log into [Render Dashboard](https://dashboard.render.com).
-3. Click **New +** &rarr; **Blueprint**.
-4. Connect your GitHub repository.
-5. Render will automatically detect [`render.yaml`](./render.yaml) and configure:
-   - **Service Type:** Web Service
-   - **Name:** `heatshield-ai-backend`
-   - **Runtime:** Python 3.12
+1. Connect your GitHub repository in [Render Dashboard](https://dashboard.render.com) -> **New +** -> **Blueprint**.
+2. Render automatically uses [`render.yaml`](./render.yaml):
+   - **Runtime:** Python 3.12 (`3.12.10`)
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
    - **Health Check Path:** `/api/health`
-6. Click **Apply**. Once deployed, Render will provide a live URL (e.g. `https://heatshield-ai-backend.onrender.com`).
+   - **Environment Variables:**
+     - `PYTHONPATH=.`
+     - `PYTHON_VERSION=3.12.10`
+     - `TRUSTED_PROXY_IPS=127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10` (allows Render's reverse proxy to pass the real client IP to `/api/geo/ip` while blocking spoofed `X-Forwarded-For` headers from untrusted peers)
 
-### Manual Web Service Setup (Alternative)
-- **Environment:** Python
-- **Region:** Any (e.g., Oregon or Frankfurt)
-- **Branch:** `main`
-- **Build Command:** `pip install -r requirements.txt`
-- **Start Command:** `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-- **Environment Variables:**
-  - `PYTHONPATH`: `.`
-  - `PYTHON_VERSION`: `3.12.10`
+> **Optional Security Tightening:** Set `CORS_ALLOW_ORIGINS` on Render to your Vercel origin (e.g., `https://heat-map-ai.vercel.app`) if calling the Render URL directly via `VITE_API_URL`.
 
 ---
 
-## ⚡ Option 2: Deploy Frontend on Vercel
+## Option 2: Deploy Frontend on Vercel
 
-### Deploying the React SPA:
-1. Import your GitHub repository into [Vercel](https://vercel.com).
-2. Framework Preset: **Vite**.
-3. Build Command: `npm run build` (or `node scripts/vercel-build.js`).
-4. Output Directory: `dist`.
-5. Under **Environment Variables**, set:
-   - `VITE_API_URL`: `https://heatshield-ai-backend.onrender.com` (your Render backend URL)
-6. Click **Deploy**.
+1. Import the GitHub repository into [Vercel](https://vercel.com) (Root Directory: `.` or `frontend`).
+2. Framework Preset: **Vite** (`buildCommand`: `npm run build`, `outputDirectory`: `dist`).
+3. [`vercel.json`](./vercel.json) and [`frontend/vercel.json`](./frontend/vercel.json) configure:
+   - `/api/:path*` proxy rewrites to your Render backend URL.
+   - Zero-stale-cache `Cache-Control: public, max-age=0, must-revalidate` headers on `/sw.js` and `/index.html`, plus immutable caching on hashed `/assets/*` bundles.
+4. Optionally set `VITE_API_URL` in Vercel **Environment Variables** if pointing to a custom Render backend domain.
 
-> **Note on Cold Starts**: Render's free tier spins down web services after 15 minutes of inactivity. When spinning up, the frontend automatically falls back to authentic pre-calculated scientific models (`OFFLINE_RESEARCH_DATA` and `offlineClimateIntelligence`) with 0ms latency, and automatically seamlessly switches to live data once the backend responds.
+> **Cold-Start & Offline Resilience:** When the Render free-tier container wakes from sleep (~25–40s), the frontend acquires device GPS directly in the browser, queries Open-Meteo HTTPS live observations/forecasts with `&timezone=auto`, reverse-geocodes via BigDataCloud/Nominatim, and clearly labels NOAA GSOD IDW fallback data as `Offline Estimate` with `observed_at = null` if network connectivity is absent.
 
 ---
 
-## 🌐 Option 3: Unified Full-Stack on Vercel (Serverless Python)
+## Option 3: Unified Docker Deployment (Single Container)
 
-HeatShield AI includes an ASGI serverless handler [`api/index.py`](./api/index.py) and [`vercel.json`](./vercel.json) rewrites:
-- Any request to `/api/*` is routed directly to `api/index.py` via Vercel's Python Serverless Runtime.
-- All non-API routes serve the SPA (`index.html`).
-
----
-
-## 🐳 Option 4: Unified Docker Deployment (Single Container)
-
-To host both the frontend and backend together in a single container on Render or Google Cloud Run:
+To build and serve both the React SPA and FastAPI API from one container:
 ```bash
 docker build -t heatshield-ai .
-docker run -p 8000:8000 -e PORT=8000 heatshield-ai
+docker run -p 8000:8000 -e PORT=8000 \
+  -e TRUSTED_PROXY_IPS="127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10" \
+  heatshield-ai
 ```
-The Docker container builds the frontend into `frontend/dist` and FastAPI serves both the static web app and all `/api/*` endpoints from a single port.
+*(Omit `TRUSTED_PROXY_IPS` when exposing the container directly without a reverse proxy so arbitrary `X-Forwarded-For` headers remain rejected.)*
+
+---
+
+## Pre-Deployment Verification Gate
+
+Run all checks locally before pushing a release:
+```bash
+# Backend + Security + Weather + Geo Regression Tests (50 tests)
+.venv\Scripts\python.exe -m pytest tests/ -v
+
+# Frontend Lint & Production Build
+cd frontend && npm run lint && npm run build
+
+# Full Release Qualification Gate
+cd .. && .venv\Scripts\python.exe scripts/release_validation.py
+```

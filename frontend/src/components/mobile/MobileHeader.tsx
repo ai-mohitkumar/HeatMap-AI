@@ -1,6 +1,7 @@
 import React from 'react';
-import { Bell, Menu, MapPin, ChevronDown } from 'lucide-react';
+import { Bell, Menu, MapPin, ChevronDown, AlertTriangle } from 'lucide-react';
 import { HeatShieldLogo } from '../shared/HeatShieldLogo';
+import type { LocationSourceType } from '../../types';
 
 interface MobileHeaderProps {
   locationName: string;
@@ -8,6 +9,8 @@ interface MobileHeaderProps {
   onOpenAlerts: () => void;
   onOpenDrawer: () => void;
   hasUnreadAlerts?: boolean;
+  locationSource?: LocationSourceType;
+  locationUnavailable?: boolean;
 }
 
 export const MobileHeader: React.FC<MobileHeaderProps> = ({
@@ -15,10 +18,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   onOpenLocationPicker,
   onOpenAlerts,
   onOpenDrawer,
-  hasUnreadAlerts = true
+  hasUnreadAlerts = true,
+  locationSource,
+  locationUnavailable = false
 }) => {
-  // Clean location string (e.g., "Patna, Bihar" or "Buxar, IN")
-  const shortLocation = locationName.replace(/, India$/, ', IN').replace(/ Station$/, '');
+  const shortLocation = locationUnavailable
+    ? 'Select Location'
+    : locationName.replace(/, India$/, ', IN').replace(/ Station$/, '');
 
   return (
     <header className="md:hidden sticky top-0 z-40 bg-[#0B132B]/95 backdrop-blur-xl border-b border-slate-800/80 px-3.5 py-2.5 flex items-center justify-between shadow-lg">
@@ -28,11 +34,22 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       {/* Center: Tappable Location Pill */}
       <button
         onClick={onOpenLocationPicker}
-        className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#14203D] hover:bg-[#1D2E56] border border-blue-500/30 text-slate-200 transition shadow-inner max-w-[170px]"
+        className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-slate-200 transition shadow-inner max-w-[178px] ${
+          locationUnavailable
+            ? 'bg-amber-950/60 hover:bg-amber-900/60 border-amber-500/50 text-amber-200'
+            : 'bg-[#14203D] hover:bg-[#1D2E56] border-blue-500/30'
+        }`}
         title="Change location"
       >
-        <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+        {locationUnavailable ? (
+          <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
+        ) : (
+          <MapPin className="w-3 h-3 text-rose-400 shrink-0" />
+        )}
         <span className="text-[11px] font-bold text-white truncate">{shortLocation}</span>
+        {!locationUnavailable && locationSource === 'ip_geolocation' && (
+          <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 font-bold shrink-0">IP</span>
+        )}
         <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
       </button>
 

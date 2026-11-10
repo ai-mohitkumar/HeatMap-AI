@@ -12,6 +12,8 @@ interface MobileAIProps {
   humidityPct: number;
   riskLevel: string;
   peakWindow?: string;
+  currentLat?: number | null;
+  currentLon?: number | null;
 }
 
 interface ChatMessage {
@@ -31,7 +33,9 @@ export const MobileAI: React.FC<MobileAIProps> = ({
   feelsLikeC,
   humidityPct,
   riskLevel,
-  peakWindow = '12:30 PM – 3:30 PM'
+  peakWindow = '12:30 PM – 3:30 PM',
+  currentLat,
+  currentLon
 }) => {
   const quickPrompts = [
     '📍 How hot is Jaipur right now?',
@@ -70,8 +74,8 @@ export const MobileAI: React.FC<MobileAIProps> = ({
   } => {
     const res = answerHeatSafetyQuery(userPrompt, {
       name: locationName,
-      lat: 28.58,
-      lon: 77.20,
+      lat: currentLat ?? undefined,
+      lon: currentLon ?? undefined,
       tempC,
       feelsLikeC,
       humidity: humidityPct,

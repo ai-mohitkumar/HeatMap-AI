@@ -16,13 +16,26 @@ import type {
   CoverageMetrics,
   ClusterStabilityResult,
   RadarCentroidsResponse,
-  LanguageCode
+  LanguageCode,
+  LiveWeatherResponse,
+  HourlyForecastResponse,
+  DataProvenanceType,
+  LocationSourceType,
+  ReverseGeocodeSource
 } from './types';
 import { HeatEmergencyModal } from './components/HeatEmergencyModal';
+import { MobileLocationModal } from './components/mobile/MobileLocationModal';
 import { OFFLINE_STATIONS } from './utils/offlineEngine';
 import { OFFLINE_RESEARCH_DATA } from './utils/offlineResearchData';
 import { evaluateLocationHeat } from './utils/indiaGeoStore';
-import { acquireBestLocation } from './utils/geolocationService';
+import {
+  acquireBestLocation,
+  createManualLocationResult,
+  loadManualLocation,
+  saveManualLocation,
+  clearManualLocation,
+  type GeolocationResult
+} from './utils/geolocationService';
 import { notificationService } from './utils/notificationService';
 import { useResponsiveMode } from './hooks/useResponsiveMode';
 import { ToastBanner } from './components/shared/ToastBanner';
@@ -126,13 +139,10 @@ export function App() {
   const [appMode, setAppMode] = useState<'safety' | 'dashboard' | 'research' | 'lab'>('safety');
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('home');
   const [selectedSafetyStationId, setSelectedSafetyStationId] = useState<string>('42182099999');
-  const [customLocation, setCustomLocation] = useState<{
-    name: string;
-    lat: number;
-    lon: number;
-    district?: string;
-    state?: string;
-  } | null>(null);
+  const [initialManualLoc] = useState<GeolocationResult | null>(() => loadManualLocation());
+  const [locationState, setLocationState] = useState<GeolocationResult | null>(initialManualLoc);
+  const [locationAcquiring, setLocationAcquiring] = useState<boolean>(!initialManualLoc);
+  const [isDesktopLocationModalOpen, setIsDesktopLocationModalOpen] = useState<boolean>(false);
   const [explorerSelection, setExplorerSelection] = useState<{ stateCode?: string; districtName?: string; villageName?: string } | null>(null);
   const [isAnalystOpen, setIsAnalystOpen] = useState<boolean>(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
@@ -364,15 +374,45 @@ export function App() {
 
   const { isMobile, displayMode, setDisplayMode } = useResponsiveMode(768);
 
-  // Active coordinates & telemetry calculation for both mobile and desktop
-  const activeStation =
-    OFFLINE_STATIONS.find((s) => s.station_id === selectedSafetyStationId) || OFFLINE_STATIONS[0];
-  const currentLat = customLocation ? customLocation.lat : activeStation.latitude;
-  const currentLon = customLocation ? customLocation.lon : activeStation.longitude;
-  const locationName = customLocation ? customLocation.name : `${activeStation.station_name}, IN`;
+  // Unified verified location state (never falls back silently to a hardcoded city)
+  const hasVerifiedLocation = Boolean(
+    locationState &&
+      locationState.status === 'resolved' &&
+      locationState.latitude != null &&
+      locationState.longitude != null &&
+      Number.isFinite(locationState.latitude) &&
+      Number.isFinite(locationState.longitude)
+  );
+  const currentLat: number | null = hasVerifiedLocation ? locationState!.latitude! : null;
+  const currentLon: number | null = hasVerifiedLocation ? locationState!.longitude! : null;
+  const locationUnavailable = !locationAcquiring && !hasVerifiedLocation;
+  const locationName = hasVerifiedLocation
+    ? locationState!.displayName
+    : locationAcquiring
+    ? 'Acquiring location...'
+    : 'Location Unavailable';
+  const gpsAccuracy: number | null = hasVerifiedLocation ? locationState!.accuracyM : null;
+  const locationSource: LocationSourceType = hasVerifiedLocation ? locationState!.source : 'unavailable';
+  const reverseSource: ReverseGeocodeSource = hasVerifiedLocation
+    ? locationState!.reverseSource
+    : 'unavailable';
+  const locationErrorReason: string | null =
+    locationState && locationState.status === 'unavailable' ? locationState.errorReason ?? null : null;
 
-  // Continuous IDW evaluation
+  const customLocation = useMemo(() => {
+    if (!hasVerifiedLocation || currentLat == null || currentLon == null) return null;
+    return {
+      name: locationState!.placeName || locationState!.displayName,
+      lat: currentLat,
+      lon: currentLon,
+      district: locationState!.districtName,
+      state: locationState!.stateName
+    };
+  }, [hasVerifiedLocation, currentLat, currentLon, locationState]);
+
+  // Continuous IDW offline baseline (for contributing stations & fallback when live API is offline)
   const localHeat = useMemo(() => {
+    if (currentLat == null || currentLon == null) return null;
     try {
       return evaluateLocationHeat(currentLat, currentLon);
     } catch {
@@ -380,15 +420,69 @@ export function App() {
     }
   }, [currentLat, currentLon]);
 
-  const tempC = localHeat?.weather?.temperature ?? activeStation.temperature_c;
-  const feelsLikeC = localHeat?.weather?.feels_like ?? activeStation.heat_index_c;
-  const humidity = Math.round(localHeat?.weather?.humidity ?? activeStation.relative_humidity_pct);
-  const windKmh = Math.round(localHeat?.weather?.wind_speed ?? 11);
-  const riskLevel = localHeat?.prediction?.risk_level ?? activeStation.vulnerability_tier;
+  // Live Weather Observation + Hourly Forecast synced to verified coordinates
+  const [liveWeather, setLiveWeather] = useState<LiveWeatherResponse | null>(null);
+  const [hourlyForecast, setHourlyForecast] = useState<HourlyForecastResponse | null>(null);
 
-  // Automated background heat risk notification check (debounced)
   useEffect(() => {
-    if (localHeat) {
+    if (currentLat == null || currentLon == null) {
+      setLiveWeather(null);
+      setHourlyForecast(null);
+      return;
+    }
+    let cancelled = false;
+    const nearestStationId = localHeat?.data_source?.stations_used?.[0]?.station_id;
+    Promise.all([
+      api.getLiveWeather(currentLat, currentLon),
+      api.getHourlyForecast(currentLat, currentLon, nearestStationId)
+    ])
+      .then(([wx, fc]) => {
+        if (cancelled) return;
+        setLiveWeather(wx);
+        setHourlyForecast(fc);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[Weather] Failed to refresh live weather/forecast:', err);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentLat, currentLon, localHeat]);
+
+  useEffect(() => {
+    const nearestStationId = localHeat?.data_source?.stations_used?.[0]?.station_id;
+    if (nearestStationId) {
+      setSelectedSafetyStationId(nearestStationId);
+    }
+  }, [localHeat]);
+
+  const tempC = hasVerifiedLocation
+    ? Math.round((liveWeather?.temperature_c ?? localHeat?.weather?.temperature ?? 0) * 10) / 10
+    : 0;
+  const feelsLikeC = hasVerifiedLocation
+    ? Math.round((liveWeather?.heat_index_c ?? localHeat?.weather?.feels_like ?? 0) * 10) / 10
+    : 0;
+  const humidity = hasVerifiedLocation
+    ? Math.round(liveWeather?.relative_humidity_pct ?? localHeat?.weather?.humidity ?? 0)
+    : 0;
+  const windKmh = hasVerifiedLocation
+    ? Math.round(liveWeather?.wind_speed_kmh ?? localHeat?.weather?.wind_speed ?? 0)
+    : 0;
+  const riskLevel = hasVerifiedLocation
+    ? liveWeather?.risk_tier ?? localHeat?.prediction?.risk_level ?? 'Moderate'
+    : 'Unavailable';
+  const weatherProvenance: DataProvenanceType = liveWeather?.is_live
+    ? 'live_observation'
+    : 'offline_estimate';
+  const weatherProvider = liveWeather?.provider ?? 'NOAA GSOD IDW Baseline';
+  const observedAt = liveWeather?.is_live ? liveWeather.observed_at ?? null : null;
+  const weatherFallbackReason = liveWeather?.fallback_reason ?? null;
+
+  // Automated background heat risk notification check (only with verified location)
+  useEffect(() => {
+    if (hasVerifiedLocation && (liveWeather || localHeat)) {
       notificationService.checkAndNotifyHeatRisk(
         locationName,
         tempC,
@@ -408,9 +502,9 @@ export function App() {
         );
       }
     }
-  }, [locationName, tempC, feelsLikeC, riskLevel, localHeat]);
+  }, [hasVerifiedLocation, locationName, tempC, feelsLikeC, riskLevel, liveWeather, localHeat]);
 
-  // Contributing stations (IDW)
+  // Contributing NOAA GSOD baseline stations (IDW)
   const contributingStations: StationInfluenceItem[] = useMemo(() => {
     if (localHeat?.data_source?.stations_used && localHeat.data_source.stations_used.length > 0) {
       return localHeat.data_source.stations_used.map((st) => {
@@ -426,50 +520,82 @@ export function App() {
         };
       });
     }
-    return OFFLINE_STATIONS.slice(0, 4).map((st, idx) => ({
-      stationId: st.station_id,
-      name: st.station_name,
-      code: st.station_id.slice(-5),
-      distanceKm: idx === 0 ? 0 : Math.round(idx * 45 + 12),
-      tempC: st.temperature_c,
-      weightPct: idx === 0 ? 68 : idx === 1 ? 20 : idx === 2 ? 8 : 4,
-      color: st.color
-    }));
+    return [];
   }, [localHeat]);
 
   const [isTrackingGps, setIsTrackingGps] = useState<boolean>(false);
-  const [gpsAccuracy, setGpsAccuracy] = useState<number>(50);
   const [gpsStatusMessage, setGpsStatusMessage] = useState<string | null>(null);
 
+  const handleSelectStationManual = (stId: string) => {
+    setSelectedSafetyStationId(stId);
+    const st = OFFLINE_STATIONS.find((s) => s.station_id === stId);
+    if (st) {
+      const manualPayload = {
+        name: `${st.station_name}, IN`,
+        lat: st.latitude,
+        lon: st.longitude,
+        district: st.station_name,
+        state: 'India'
+      };
+      const stationLoc: GeolocationResult = {
+        ...createManualLocationResult(manualPayload),
+        accuracyM: null
+      };
+      setLocationState(stationLoc);
+      saveManualLocation(manualPayload);
+      setLocationAcquiring(false);
+    }
+  };
+
+  const handleSelectCustomLocation = (loc: {
+    name: string;
+    lat: number;
+    lon: number;
+    district?: string;
+    state?: string;
+  }) => {
+    const manual = createManualLocationResult(loc);
+    setLocationState(manual);
+    saveManualLocation(loc);
+    setLocationAcquiring(false);
+  };
+
   const handleTrackMove = async () => {
+    clearManualLocation();
+    setLocationAcquiring(true);
     setIsTrackingGps(true);
-    setGpsStatusMessage('Acquiring location fix...');
+    setGpsStatusMessage('Acquiring verified location fix...');
     try {
       const loc = await acquireBestLocation((status) => {
         setGpsStatusMessage(status);
       });
-      setGpsAccuracy(loc.accuracyM);
-      setCustomLocation({
-        name: loc.displayName,
-        lat: loc.latitude,
-        lon: loc.longitude,
-        district: loc.districtName,
-        state: loc.stateName
-      });
-      setGpsStatusMessage(`Location locked: ${loc.displayName} (±${loc.accuracyM}m)`);
+      setLocationState(loc);
+      if (loc.status === 'resolved') {
+        setGpsStatusMessage(
+          loc.isApproximateLocation
+            ? `Approximate location (${loc.displayName}) via IP network`
+            : `Location locked: ${loc.displayName}${loc.accuracyM != null ? ` (±${loc.accuracyM}m)` : ''}`
+        );
+      } else {
+        setGpsStatusMessage(loc.errorReason || 'Location unavailable — please select your city manually.');
+      }
       setTimeout(() => setGpsStatusMessage(null), 5000);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('[GPS] Error acquiring location:', err);
-      setGpsStatusMessage('Location sensor unavailable. Reverting to nearest station.');
-      setTimeout(() => setGpsStatusMessage(null), 4000);
+      setGpsStatusMessage('Location sensor unavailable. Please select a city manually.');
+      setTimeout(() => setGpsStatusMessage(null), 5000);
     } finally {
+      setLocationAcquiring(false);
       setIsTrackingGps(false);
     }
   };
 
-  // Automatically request permission and fetch live location when app opens
+  // Automatically request location when app opens unless user already saved a manual location
   useEffect(() => {
-    handleTrackMove();
+    if (!initialManualLoc) {
+      handleTrackMove();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) {
@@ -516,6 +642,16 @@ export function App() {
           currentLat={currentLat}
           currentLon={currentLon}
           accuracyM={gpsAccuracy}
+          locationSource={locationSource}
+          reverseSource={reverseSource}
+          locationUnavailable={locationUnavailable}
+          locationAcquiring={locationAcquiring}
+          locationErrorReason={locationErrorReason}
+          weatherProvenance={weatherProvenance}
+          weatherProvider={weatherProvider}
+          observedAt={observedAt}
+          weatherFallbackReason={weatherFallbackReason}
+          hourlyForecast={hourlyForecast}
           contributingStations={contributingStations}
           selectedStationId={selectedSafetyStationId}
           activeK={activeK}
@@ -524,13 +660,8 @@ export function App() {
           mapStations={mapStations}
           aiInsights={aiInsights}
           customLocation={customLocation}
-          onSelectStation={(stId) => {
-            setSelectedSafetyStationId(stId);
-            setCustomLocation(null);
-          }}
-          onSelectLocation={(loc) => {
-            setCustomLocation(loc);
-          }}
+          onSelectStation={handleSelectStationManual}
+          onSelectLocation={handleSelectCustomLocation}
           onTrackMove={handleTrackMove}
           isTracking={isTrackingGps}
           gpsStatusMessage={gpsStatusMessage}
@@ -605,13 +736,12 @@ export function App() {
         onSelectYear={handleSelectYear}
         onExportReport={handleOpenExportModal}
         onSelectStation={(stationId) => {
-          setSelectedSafetyStationId(stationId);
-          setCustomLocation(null);
+          handleSelectStationManual(stationId);
           setSidebarTab('home');
           setAppMode('safety');
         }}
         onSelectLocation={(loc) => {
-          setCustomLocation(loc);
+          handleSelectCustomLocation(loc);
           setSidebarTab('home');
           setAppMode('safety');
         }}
@@ -642,14 +772,34 @@ export function App() {
         <div className="flex-1 min-w-0 bg-[#090F1F] overflow-x-hidden flex flex-col pb-24 md:pb-6">
           {/* 1. Unified Command Center Hub (Matches uploaded reference mockup!) */}
           {appMode === 'safety' && sidebarTab === 'home' && (
-
             <HeatShieldHub
               selectedStationId={selectedSafetyStationId}
-              onSelectStation={(stId) => {
-                setSelectedSafetyStationId(stId);
-                setCustomLocation(null);
-              }}
+              onSelectStation={handleSelectStationManual}
               customLocation={customLocation}
+              currentLat={currentLat}
+              currentLon={currentLon}
+              accuracyM={gpsAccuracy}
+              locationName={locationName}
+              locationSource={locationSource}
+              reverseSource={reverseSource}
+              locationUnavailable={locationUnavailable}
+              locationAcquiring={locationAcquiring}
+              locationErrorReason={locationErrorReason}
+              isTracking={isTrackingGps}
+              gpsMessage={gpsStatusMessage}
+              onTrackMove={handleTrackMove}
+              onOpenLocationPicker={() => setIsDesktopLocationModalOpen(true)}
+              tempC={tempC}
+              feelsLikeC={feelsLikeC}
+              humidity={humidity}
+              windKmh={windKmh}
+              riskLevel={riskLevel}
+              weatherProvenance={weatherProvenance}
+              weatherProvider={weatherProvider}
+              observedAt={observedAt}
+              weatherFallbackReason={weatherFallbackReason}
+              hourlyForecast={hourlyForecast}
+              contributingStations={contributingStations}
               lang={lang}
               onTriggerEmergencyMode={handleTriggerEmergency}
               onNavigateTab={(tab) => {
@@ -681,9 +831,7 @@ export function App() {
                 }
               }}
               customLocation={customLocation}
-              onSelectLocation={(loc) => {
-                setCustomLocation(loc);
-              }}
+              onSelectLocation={handleSelectCustomLocation}
               hasPwaPrompt={Boolean(deferredPrompt)}
               onTriggerPwaInstall={handleTriggerPwaInstall}
             />
@@ -752,8 +900,9 @@ export function App() {
               </div>
               <AllStationsLiveView
                 onSelectStation={(stId) => {
-                  setSelectedSafetyStationId(stId);
+                  handleSelectStationManual(stId);
                   setSidebarTab('home');
+                  setAppMode('safety');
                 }}
                 activeStationId={selectedSafetyStationId}
                 lang={lang}
@@ -783,7 +932,7 @@ export function App() {
                 initialDistrictName={explorerSelection?.districtName || 'Buxar'}
                 initialVillageName={explorerSelection?.villageName || 'Ahirauli'}
                 onSelectActiveLocation={(loc) => {
-                  setCustomLocation({
+                  handleSelectCustomLocation({
                     name: loc.name,
                     lat: loc.lat,
                     lon: loc.lon,
@@ -1116,6 +1265,27 @@ export function App() {
       <BrightnessModal
         isOpen={isBrightnessModalOpen}
         onClose={() => setIsBrightnessModalOpen(false)}
+      />
+
+      {/* Desktop Manual Location Picker Modal */}
+      <MobileLocationModal
+        isOpen={isDesktopLocationModalOpen}
+        onClose={() => setIsDesktopLocationModalOpen(false)}
+        onSelectStation={(stId) => {
+          handleSelectStationManual(stId);
+          setIsDesktopLocationModalOpen(false);
+        }}
+        onSelectLocation={(loc) => {
+          handleSelectCustomLocation(loc);
+          setIsDesktopLocationModalOpen(false);
+        }}
+        onTrackMove={() => {
+          setIsDesktopLocationModalOpen(false);
+          handleTrackMove();
+        }}
+        isTracking={isTrackingGps}
+        locationUnavailable={locationUnavailable}
+        errorReason={locationErrorReason}
       />
 
       {/* Footer */}

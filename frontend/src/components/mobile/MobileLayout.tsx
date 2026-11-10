@@ -11,6 +11,12 @@ import { MobileAlerts } from './MobileAlerts';
 import { MobileResearch } from './MobileResearch';
 import type { DisplayMode } from '../../hooks/useResponsiveMode';
 import type { StationInfluenceItem } from './MobileIDWCard';
+import type {
+  DataProvenanceType,
+  HourlyForecastResponse,
+  LocationSourceType,
+  ReverseGeocodeSource
+} from '../../types';
 
 // Secondary views reused from components
 import { OFFLINE_STATIONS } from '../../utils/offlineEngine';
@@ -38,9 +44,19 @@ interface MobileLayoutProps {
   humidityPct: number;
   windKmh: number;
   riskLevel: string;
-  currentLat: number;
-  currentLon: number;
-  accuracyM?: number;
+  currentLat: number | null;
+  currentLon: number | null;
+  accuracyM?: number | null;
+  locationSource?: LocationSourceType;
+  reverseSource?: ReverseGeocodeSource;
+  locationUnavailable?: boolean;
+  locationAcquiring?: boolean;
+  locationErrorReason?: string | null;
+  weatherProvenance?: DataProvenanceType;
+  weatherProvider?: string;
+  observedAt?: string | null;
+  weatherFallbackReason?: string | null;
+  hourlyForecast?: HourlyForecastResponse | null;
   contributingStations: StationInfluenceItem[];
   selectedStationId: string;
   activeK: number;
@@ -82,7 +98,17 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
   riskLevel,
   currentLat,
   currentLon,
-  accuracyM = 50,
+  accuracyM,
+  locationSource,
+  reverseSource,
+  locationUnavailable = false,
+  locationAcquiring = false,
+  locationErrorReason,
+  weatherProvenance = 'offline_estimate',
+  weatherProvider,
+  observedAt,
+  weatherFallbackReason,
+  hourlyForecast,
   contributingStations,
   selectedStationId,
   activeK,
@@ -157,6 +183,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         }}
         onOpenDrawer={() => setIsDrawerOpen(true)}
         hasUnreadAlerts={true}
+        locationSource={locationSource}
+        locationUnavailable={locationUnavailable}
       />
 
       {/* Live GPS / Location Status Notification */}
@@ -432,6 +460,16 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
             currentLat={currentLat}
             currentLon={currentLon}
             accuracyM={accuracyM}
+            locationSource={locationSource}
+            reverseSource={reverseSource}
+            locationUnavailable={locationUnavailable}
+            locationAcquiring={locationAcquiring}
+            locationErrorReason={locationErrorReason}
+            weatherProvenance={weatherProvenance}
+            weatherProvider={weatherProvider}
+            observedAt={observedAt}
+            weatherFallbackReason={weatherFallbackReason}
+            hourlyForecast={hourlyForecast}
             contributingStations={contributingStations}
             selectedStationId={selectedStationId}
             onSelectStation={onSelectStation}
@@ -455,6 +493,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               selectedStationId={selectedStationId}
               onSelectStation={onSelectStation}
               isFullscreen={false}
+              locationUnavailable={locationUnavailable || locationAcquiring}
             />
           </div>
         )}
@@ -467,6 +506,9 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               feelsLikeC={feelsLikeC}
               humidityPct={humidityPct}
               riskLevel={riskLevel}
+              peakWindow={hourlyForecast?.peak_window}
+              currentLat={currentLat}
+              currentLon={currentLon}
             />
           </div>
         )}
@@ -524,6 +566,8 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         }}
         onTrackMove={onTrackMove}
         isTracking={isTracking}
+        locationUnavailable={locationUnavailable}
+        errorReason={locationErrorReason}
       />
 
       {/* 6. Display Brightness & Sunlight Boost Modal */}

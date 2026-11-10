@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { MapPin, Radio, ChevronRight } from 'lucide-react';
+import { formatLocationConfidence } from '../../utils/geolocationService';
+import type { LocationSourceType, ReverseGeocodeSource } from '../../types';
 
 export interface StationInfluenceItem {
   stationId: string;
@@ -12,9 +14,12 @@ export interface StationInfluenceItem {
 }
 
 interface MobileIDWCardProps {
-  currentLat: number;
-  currentLon: number;
-  accuracyM?: number;
+  currentLat: number | null;
+  currentLon: number | null;
+  accuracyM?: number | null;
+  locationSource?: LocationSourceType;
+  reverseSource?: ReverseGeocodeSource;
+  locationUnavailable?: boolean;
   contributingStations: StationInfluenceItem[];
   onTrackMove: () => void;
   isTracking?: boolean;
@@ -25,7 +30,10 @@ interface MobileIDWCardProps {
 export const MobileIDWCard: React.FC<MobileIDWCardProps> = ({
   currentLat,
   currentLon,
-  accuracyM = 50,
+  accuracyM,
+  locationSource = 'hardware_gps',
+  reverseSource,
+  locationUnavailable = false,
   contributingStations,
   onTrackMove,
   isTracking = false,
@@ -33,31 +41,44 @@ export const MobileIDWCard: React.FC<MobileIDWCardProps> = ({
   onSelectStation
 }) => {
   const [selectedStation, setSelectedStation] = useState<StationInfluenceItem | null>(null);
+  const confidence = formatLocationConfidence(locationSource, accuracyM);
+  const hasCoords =
+    !locationUnavailable &&
+    currentLat !== null &&
+    currentLon !== null &&
+    Number.isFinite(currentLat) &&
+    Number.isFinite(currentLon);
 
   return (
     <div className="rounded-2xl bg-[#0F172E] border border-slate-800 p-4 shadow-lg space-y-3.5">
       {/* Location Header & GPS Accuracy */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-slate-300">
             <MapPin className="w-4 h-4 text-rose-400" />
-            <span>Your Exact Coordinates</span>
+            <span>Your Coordinates &amp; Accuracy</span>
           </div>
           <div className="text-sm font-mono font-bold text-white mt-1">
-            {currentLat.toFixed(4)}° N, {currentLon.toFixed(4)}° E
+            {hasCoords
+              ? `${currentLat!.toFixed(5)}° N, ${currentLon!.toFixed(5)}° E`
+              : 'Coordinates Unavailable'}
           </div>
           <span className="inline-block mt-0.5 text-[10px] text-slate-400 font-medium">
-            Accuracy: ±{accuracyM} m • Continuous IDW (k=4, p=2.0)
+            {hasCoords
+              ? `${confidence.label} (${confidence.accuracyLabel})${
+                  reverseSource === 'local_centroid_fallback' ? ' • Offline Nearest District Name' : ''
+                }`
+              : 'Tap Track GPS or pick a location manually'}
           </span>
         </div>
 
         <button
           onClick={onTrackMove}
           disabled={isTracking}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-xs font-bold transition disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 text-xs font-bold transition disabled:opacity-50 shrink-0"
         >
           <Radio className={`w-3.5 h-3.5 ${isTracking ? 'animate-ping' : ''}`} />
-          <span>{isTracking ? 'Locating...' : 'Track Move'}</span>
+          <span>{isTracking ? 'Locating...' : 'Track GPS'}</span>
         </button>
       </div>
 
@@ -71,7 +92,7 @@ export const MobileIDWCard: React.FC<MobileIDWCardProps> = ({
       {/* 4-Station IDW Influence Breakdown */}
       <div className="space-y-2 border-t border-slate-800/80 pt-3">
         <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold uppercase tracking-wider">
-          <span>4 Contributing NOAA Stations</span>
+          <span>NOAA GSOD Baseline (k=4 IDW)</span>
           <span>Influence %</span>
         </div>
 

@@ -1,5 +1,7 @@
 import React from 'react';
-import { Sun, Droplets, Wind, MapPin, ChevronRight } from 'lucide-react';
+import { Sun, Droplets, Wind, MapPin, ChevronRight, AlertTriangle, Compass } from 'lucide-react';
+import { formatLocationConfidence } from '../../utils/geolocationService';
+import type { DataProvenanceType, LocationSourceType } from '../../types';
 
 interface MobileHeatCardProps {
   locationName: string;
@@ -10,6 +12,27 @@ interface MobileHeatCardProps {
   riskLevel: 'Low' | 'Moderate' | 'High' | 'Extreme' | string;
   onOpenLocationPicker: () => void;
   onOpenRiskDetails?: () => void;
+  onTrackMove?: () => void;
+  locationUnavailable?: boolean;
+  locationAcquiring?: boolean;
+  locationErrorReason?: string | null;
+  locationSource?: LocationSourceType;
+  accuracyM?: number | null;
+  weatherProvenance?: DataProvenanceType;
+  weatherProvider?: string;
+  observedAt?: string | null;
+  weatherFallbackReason?: string | null;
+}
+
+function formatObservedTime(iso?: string | null): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
 }
 
 export const MobileHeatCard: React.FC<MobileHeatCardProps> = ({
@@ -20,8 +43,76 @@ export const MobileHeatCard: React.FC<MobileHeatCardProps> = ({
   windKmh,
   riskLevel,
   onOpenLocationPicker,
-  onOpenRiskDetails
+  onOpenRiskDetails,
+  onTrackMove,
+  locationUnavailable = false,
+  locationAcquiring = false,
+  locationErrorReason,
+  locationSource = 'hardware_gps',
+  accuracyM,
+  weatherProvenance = 'offline_estimate',
+  weatherProvider = 'NOAA GSOD 2022–2025 IDW',
+  observedAt,
+  weatherFallbackReason
 }) => {
+  const confidence = formatLocationConfidence(locationSource, accuracyM);
+  const obsTimeText = formatObservedTime(observedAt);
+
+  if (locationAcquiring) {
+    return (
+      <div className="rounded-3xl bg-gradient-to-b from-[#131E3A] to-[#0D152D] border border-slate-700/80 p-6 shadow-2xl space-y-4">
+        <div className="flex items-center gap-2 text-xs font-bold text-blue-300">
+          <Compass className="w-4 h-4 animate-spin text-blue-400" />
+          <span>Acquiring verified location &amp; weather...</span>
+        </div>
+        <div className="h-14 w-40 bg-slate-800/70 rounded-2xl animate-pulse" />
+        <p className="text-xs text-slate-400">
+          Checking device GPS sensors before querying weather observations. You can also select a city manually at any time.
+        </p>
+        <button
+          type="button"
+          onClick={onOpenLocationPicker}
+          className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition"
+        >
+          Select Location Manually
+        </button>
+      </div>
+    );
+  }
+
+  if (locationUnavailable) {
+    return (
+      <div className="rounded-3xl bg-gradient-to-b from-amber-950/40 via-[#181A2E] to-[#0D152D] border border-amber-500/50 p-6 shadow-2xl space-y-4">
+        <div className="flex items-center gap-2 text-amber-300">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+          <span className="text-sm font-black uppercase tracking-wide">Location Unavailable</span>
+        </div>
+        <p className="text-xs text-slate-300 leading-relaxed">
+          {locationErrorReason ||
+            'GPS and network IP detection could not determine your current position. HeatShield never assumes a default city.'}
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onOpenLocationPicker}
+            className="flex-1 py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition"
+          >
+            Select City / Village
+          </button>
+          {onTrackMove && (
+            <button
+              type="button"
+              onClick={onTrackMove}
+              className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs transition"
+            >
+              Retry GPS
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const normRisk = (riskLevel || 'Moderate').toLowerCase();
 
   const getRiskStyles = () => {
@@ -74,15 +165,28 @@ export const MobileHeatCard: React.FC<MobileHeatCardProps> = ({
       {/* Subtle Radial Glow Behind Sun */}
       <div className="absolute -top-10 -right-10 w-44 h-44 rounded-full bg-amber-500/10 blur-3xl pointer-events-none" />
 
-      {/* Top Location Bar */}
-      <button
-        onClick={onOpenLocationPicker}
-        className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition group"
-      >
-        <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-        <span className="font-bold truncate max-w-[240px]">{locationName}</span>
-        <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition" />
-      </button>
+      {/* Top Location Bar & Accuracy Confidence Badge */}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          onClick={onOpenLocationPicker}
+          className="flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition group min-w-0"
+        >
+          <MapPin className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+          <span className="font-bold truncate max-w-[190px]">{locationName}</span>
+          <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition shrink-0" />
+        </button>
+
+        <span
+          title={confidence.detail}
+          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+            confidence.isApproximate
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+              : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+          }`}
+        >
+          {confidence.shortTag}
+        </span>
+      </div>
 
       {/* Center Main Stage: Weather Icon & Huge Temperature */}
       <div className="my-5 flex items-center justify-between">
@@ -124,8 +228,8 @@ export const MobileHeatCard: React.FC<MobileHeatCardProps> = ({
         </div>
       </div>
 
-      {/* High-Contrast Risk Tier Badge */}
-      <div className="mt-4 flex items-center justify-between">
+      {/* High-Contrast Risk Tier Badge & Weather Provenance */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <button
           onClick={onOpenRiskDetails}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-black tracking-wide uppercase transition ${riskStyle.badge}`}
@@ -134,8 +238,17 @@ export const MobileHeatCard: React.FC<MobileHeatCardProps> = ({
           <span>{riskStyle.label}</span>
         </button>
 
-        <span className="text-[11px] text-slate-400 font-medium">
-          Continuous IDW Live
+        <span
+          title={weatherFallbackReason || undefined}
+          className={`text-[10px] px-2.5 py-1 rounded-full font-bold border ${
+            weatherProvenance === 'live_observation'
+              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+              : 'bg-amber-500/15 text-amber-300 border-amber-500/35'
+          }`}
+        >
+          {weatherProvenance === 'live_observation'
+            ? `Live • ${weatherProvider}${obsTimeText ? ` • ${obsTimeText}` : ''}`
+            : 'Offline IDW Estimate • NOAA Baseline'}
         </span>
       </div>
     </div>

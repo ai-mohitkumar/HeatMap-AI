@@ -19,6 +19,7 @@ import json
 import uuid
 import struct
 import zlib
+from datetime import datetime
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "frontend", "public", "downloads")
@@ -308,7 +309,8 @@ public class MainActivity extends Activity {
                 }
             }
         } catch (Exception e) {
-            mWebView.evaluateJavascript("if(window.__onNativeGpsError) window.__onNativeGpsError('" + e.getMessage() + "');", null);
+            final String safeErr = org.json.JSONObject.quote(e.getMessage() != null ? e.getMessage() : "Location acquisition error");
+            mWebView.evaluateJavascript("if(window.__onNativeGpsError) window.__onNativeGpsError(" + safeErr + ");", null);
         }
     }
 
@@ -688,6 +690,13 @@ This archive contains the entire standalone offline ecosystem:
     print(f"[OK] Master Offline Suite created: {zip_path} ({os.path.getsize(zip_path):,} bytes)")
     return zip_path
 
+def _format_size(filepath: str) -> str:
+    size_bytes = os.path.getsize(filepath)
+    if size_bytes < 1048576:
+        return f"{size_bytes / 1024:.1f} KB"
+    return f"{size_bytes / 1048576:.1f} MB"
+
+
 def main():
     print("===================================================================")
     print("       HeatShield AI - Production Packages Builder (Native SDK)    ")
@@ -700,13 +709,13 @@ def main():
     master = build_master_offline_suite()
     
     manifest = {
-        "buildTimestamp": "2026-09-12T17:26:00+05:30",
+        "buildTimestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
         "packages": {
             "android": {
                 "fileName": os.path.basename(apk),
                 "url": f"/downloads/{os.path.basename(apk)}",
                 "sizeBytes": os.path.getsize(apk),
-                "sizeFormatted": f"{os.path.getsize(apk) / 1024:.1f} KB" if os.path.getsize(apk) < 1048576 else f"{os.path.getsize(apk) / 1048576:.1f} MB",
+                "sizeFormatted": _format_size(apk),
                 "version": "2.0.4",
                 "sha256": generate_checksum(apk),
                 "format": "APK (Native Signed Package)",
@@ -716,7 +725,7 @@ def main():
                 "fileName": os.path.basename(ios),
                 "url": f"/downloads/{os.path.basename(ios)}",
                 "sizeBytes": os.path.getsize(ios),
-                "sizeFormatted": f"{os.path.getsize(ios) / 1024:.1f} KB",
+                "sizeFormatted": _format_size(ios),
                 "version": "2.0.4",
                 "sha256": generate_checksum(ios),
                 "format": "Apple Configuration Profile (.mobileconfig)",
@@ -726,7 +735,7 @@ def main():
                 "fileName": os.path.basename(wear),
                 "url": f"/downloads/{os.path.basename(wear)}",
                 "sizeBytes": os.path.getsize(wear),
-                "sizeFormatted": f"{os.path.getsize(wear) / 1024:.1f} KB",
+                "sizeFormatted": _format_size(wear),
                 "version": "2.0.4",
                 "sha256": generate_checksum(wear),
                 "format": "Wear OS Native Signed APK",
@@ -736,7 +745,7 @@ def main():
                 "fileName": os.path.basename(desktop),
                 "url": f"/downloads/{os.path.basename(desktop)}",
                 "sizeBytes": os.path.getsize(desktop),
-                "sizeFormatted": f"{os.path.getsize(desktop) / (1024 * 1024):.1f} MB",
+                "sizeFormatted": _format_size(desktop),
                 "version": "2.0.4",
                 "sha256": generate_checksum(desktop),
                 "format": "Windows / macOS Portable (.zip)",
@@ -746,7 +755,7 @@ def main():
                 "fileName": os.path.basename(master),
                 "url": f"/downloads/{os.path.basename(master)}",
                 "sizeBytes": os.path.getsize(master),
-                "sizeFormatted": f"{os.path.getsize(master) / (1024 * 1024):.1f} MB",
+                "sizeFormatted": _format_size(master),
                 "version": "2.0.4",
                 "sha256": generate_checksum(master),
                 "format": "Full Master Research Package (.zip)",

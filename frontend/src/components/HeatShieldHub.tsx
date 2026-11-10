@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Flame,
   Droplets,
@@ -27,12 +27,22 @@ import {
   OFFLINE_STATIONS,
   interpolateLocationFeaturesOffline
 } from '../utils/offlineEngine';
-import type { StationUsed, StationLiveSummaryItem, LanguageCode } from '../types';
+import type {
+  StationUsed,
+  StationLiveSummaryItem,
+  LanguageCode,
+  LocationSourceType,
+  ReverseGeocodeSource,
+  DataProvenanceType,
+  HourlyForecastResponse
+} from '../types';
 import { HourlyForecastStrip } from './HourlyForecastStrip';
 import { getTranslation } from '../utils/localization';
 import { api } from '../services/api';
 import { initiatePhoneCall } from '../utils/phoneCall';
 import { answerHeatSafetyQuery } from '../utils/universalAIEngine';
+import { formatLocationConfidence } from '../utils/geolocationService';
+import type { StationInfluenceItem } from './mobile/MobileIDWCard';
 
 interface HeatShieldHubProps {
   onNavigateTab?: (tab: string) => void;
@@ -42,16 +52,64 @@ interface HeatShieldHubProps {
   customLocation?: { name: string; lat: number; lon: number } | null;
   lang?: LanguageCode;
   onTriggerEmergencyMode?: () => void;
+  currentLat?: number | null;
+  currentLon?: number | null;
+  accuracyM?: number | null;
+  locationName?: string;
+  locationSource?: LocationSourceType;
+  reverseSource?: ReverseGeocodeSource;
+  locationUnavailable?: boolean;
+  locationAcquiring?: boolean;
+  locationErrorReason?: string | null;
+  isTracking?: boolean;
+  gpsMessage?: string | null;
+  onTrackMove?: () => void;
+  onOpenLocationPicker?: () => void;
+  tempC?: number;
+  feelsLikeC?: number;
+  humidity?: number;
+  windKmh?: number;
+  riskLevel?: 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme' | string;
+  weatherProvenance?: DataProvenanceType;
+  weatherProvider?: string;
+  observedAt?: string | null;
+  weatherFallbackReason?: string | null;
+  hourlyForecast?: HourlyForecastResponse | null;
+  contributingStations?: StationInfluenceItem[];
 }
 
 export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
   onNavigateTab,
   onOpenAIAnalyst,
-  selectedStationId = '42410099999', // Default Patna
+  selectedStationId,
   onSelectStation,
   customLocation,
   lang = 'en',
-  onTriggerEmergencyMode
+  onTriggerEmergencyMode,
+  currentLat: propLat,
+  currentLon: propLon,
+  accuracyM: propAccuracyM,
+  locationName: propLocationName,
+  locationSource = 'unavailable',
+  reverseSource = 'unavailable',
+  locationUnavailable: propLocationUnavailable,
+  locationAcquiring = false,
+  locationErrorReason,
+  isTracking: propIsTracking = false,
+  gpsMessage: propGpsMessage = null,
+  onTrackMove,
+  onOpenLocationPicker,
+  tempC: propTempC,
+  feelsLikeC: propFeelsLikeC,
+  humidity: propHumidity,
+  windKmh: propWindKmh,
+  riskLevel: propRiskLevel,
+  weatherProvenance = 'offline_estimate',
+  weatherProvider,
+  observedAt,
+  weatherFallbackReason,
+  hourlyForecast,
+  contributingStations: propContributingStations
 }) => {
   // Live ticking clock
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
@@ -61,33 +119,62 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  // Active Station Object from 46 pre-cached synoptic stations
-  const activeStation = OFFLINE_STATIONS.find(s => s.station_id === selectedStationId) || OFFLINE_STATIONS[1]; // Patna fallback
+  // Optional synoptic station record when viewing a specific baseline station
+  const activeStation = selectedStationId
+    ? OFFLINE_STATIONS.find(s => s.station_id === selectedStationId)
+    : undefined;
 
-  // Location & Weather state
-  const [currentLat, setCurrentLat] = useState<number>(activeStation.latitude);
-  const [currentLon, setCurrentLon] = useState<number>(activeStation.longitude);
-  const [accuracyM, setAccuracyM] = useState<number>(50);
-  const [locationName, setLocationName] = useState<string>(`${activeStation.station_name}, IN`);
-  const [isTracking, setIsTracking] = useState<boolean>(false);
-  const [gpsMessage, setGpsMessage] = useState<string | null>(null);
+  const hasVerifiedCoords =
+    propLat !== undefined
+      ? propLat != null && propLon != null && Number.isFinite(propLat) && Number.isFinite(propLon)
+      : customLocation != null || activeStation != null;
 
-  // Weather Metrics
-  const [tempC, setTempC] = useState<number>(activeStation.temperature_c);
-  const [feelsLikeC, setFeelsLikeC] = useState<number>(activeStation.heat_index_c);
-  const [humidity, setHumidity] = useState<number>(Math.round(activeStation.relative_humidity_pct));
-  const [windKmh, setWindKmh] = useState<number>(11);
-  const [heatIndexC, setHeatIndexC] = useState<number>(activeStation.heat_index_c);
-  const [uvIndex, setUvIndex] = useState<number>(7);
-  const [aqi, setAqi] = useState<number>(82);
-  const [riskLevel, setRiskLevel] = useState<'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme'>(
-    (activeStation.vulnerability_tier.charAt(0).toUpperCase() + activeStation.vulnerability_tier.slice(1).toLowerCase()) as any
-  );
+  const currentLat: number | null =
+    propLat !== undefined
+      ? propLat ?? null
+      : customLocation?.lat ?? activeStation?.latitude ?? null;
+  const currentLon: number | null =
+    propLon !== undefined
+      ? propLon ?? null
+      : customLocation?.lon ?? activeStation?.longitude ?? null;
+  const accuracyM: number | null = propAccuracyM ?? null;
+
+  const locationUnavailable =
+    propLocationUnavailable !== undefined
+      ? propLocationUnavailable
+      : !hasVerifiedCoords && !locationAcquiring;
+
+  const locationName =
+    propLocationName ||
+    (customLocation ? `${customLocation.name}, IN` : activeStation ? `${activeStation.station_name}, IN` : 'Location Unavailable');
+
+  const isTracking = propIsTracking;
+  const gpsMessage = propGpsMessage;
+
+  const tempC = propTempC ?? activeStation?.temperature_c ?? 0;
+  const feelsLikeC = propFeelsLikeC ?? activeStation?.heat_index_c ?? 0;
+  const humidity = propHumidity ?? (activeStation ? Math.round(activeStation.relative_humidity_pct) : 0);
+  const windKmh = propWindKmh ?? 0;
+  const heatIndexC = feelsLikeC;
+  const rawRisk = propRiskLevel || activeStation?.vulnerability_tier || 'Low';
+  const riskLevel = (
+    rawRisk.charAt(0).toUpperCase() + rawRisk.slice(1).toLowerCase()
+  ) as 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme';
+
+  const isLiveWeather = weatherProvenance === 'live_observation';
+  const formattedObservedTime = observedAt
+    ? new Date(observedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : null;
 
   // Welfare Check-in state
   const [checkinToast, setCheckinToast] = useState<string | null>(null);
 
   const handleWelfareCheckin = async () => {
+    if (currentLat == null || currentLon == null) {
+      setCheckinToast('Select location first');
+      setTimeout(() => setCheckinToast(null), 4000);
+      return;
+    }
     try {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -122,70 +209,15 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
   const [chatResponse, setChatResponse] = useState<string | null>(null);
   const [isChatThinking, setIsChatThinking] = useState<boolean>(false);
 
-  // 4 Contributing IDW Stations
-  const [stationInfluences, setStationInfluences] = useState<Array<{
-    stationId: string;
-    name: string;
-    code: string;
-    distanceKm: number;
-    tempC: number;
-    weightPct: number;
-    color: string;
-  }>>([]);
-
-  // Sync state whenever selectedStationId changes
-  useEffect(() => {
-    const st = OFFLINE_STATIONS.find(s => s.station_id === selectedStationId);
-    if (st) {
-      setCurrentLat(st.latitude);
-      setCurrentLon(st.longitude);
-      setLocationName(`${st.station_name}, IN`);
-      setTempC(st.temperature_c);
-      setFeelsLikeC(st.heat_index_c);
-      setHumidity(Math.round(st.relative_humidity_pct));
-      setHeatIndexC(st.heat_index_c);
-      setRiskLevel(
-        (st.vulnerability_tier.charAt(0).toUpperCase() + st.vulnerability_tier.slice(1).toLowerCase()) as any
-      );
-      // Derive UV Index, AQI, and wind contextually
-      const hour = new Date().getHours();
-      const isMidday = hour >= 10 && hour <= 16;
-      setUvIndex(isMidday ? (st.temperature_c > 40 ? 9 : 7) : 3);
-      setAqi(st.temperature_c > 40 ? 112 : 78);
-      setWindKmh(Math.round(8 + (st.temperature_c % 7)));
-    }
-  }, [selectedStationId]);
-
-  // Sync customLocation (e.g. from Village & District Explorer or Search)
-  useEffect(() => {
-    if (customLocation) {
-      setCurrentLat(customLocation.lat);
-      setCurrentLon(customLocation.lon);
-      setLocationName(`${customLocation.name}, IN`);
-      try {
-        const pred = interpolateLocationFeaturesOffline(customLocation.lat, customLocation.lon, 25, 4, 2.0);
-        if (pred && pred.weather) {
-          setTempC(pred.weather.temperature);
-          setFeelsLikeC(pred.weather.feels_like);
-          setHumidity(pred.weather.humidity);
-          setHeatIndexC(pred.weather.feels_like);
-          setRiskLevel(
-            (pred.prediction.risk_level.charAt(0).toUpperCase() + pred.prediction.risk_level.slice(1).toLowerCase()) as any
-          );
-        }
-      } catch (err) {
-        console.warn('Custom location IDW error:', err);
-      }
-    }
-  }, [customLocation]);
-
-  // Recalculate IDW Station Influence when coordinates change
-  useEffect(() => {
+  // 4 Contributing IDW Stations (prefer unified prop, otherwise derive from valid coords)
+  const computedInfluences = useMemo<StationInfluenceItem[]>(() => {
+    if (propContributingStations !== undefined) return [];
+    if (currentLat == null || currentLon == null) return [];
     try {
-      const pred = interpolateLocationFeaturesOffline(currentLat, currentLon, accuracyM, 4, 2.0);
-      if (pred && pred.data_source && pred.data_source.stations_used && pred.data_source.stations_used.length > 0) {
+      const pred = interpolateLocationFeaturesOffline(currentLat, currentLon, accuracyM ?? undefined, 4, 2.0);
+      if (pred?.data_source?.stations_used?.length) {
         const colors = ['#10B981', '#3B82F6', '#8B5CF6', '#F59E0B'];
-        const list = pred.data_source.stations_used.slice(0, 4).map((st: StationUsed, idx: number) => ({
+        return pred.data_source.stations_used.slice(0, 4).map((st: StationUsed, idx: number) => ({
           stationId: st.station_id,
           name: st.name.split(' ')[0] || st.name,
           code: st.station_id.slice(0, 5),
@@ -194,64 +226,22 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
           weightPct: Math.round(st.weight_pct * 10) / 10,
           color: colors[idx % colors.length]
         }));
-        setStationInfluences(list);
       }
     } catch (err) {
       console.warn('IDW calculation fallback:', err);
     }
-  }, [currentLat, currentLon, accuracyM]);
+    return [];
+  }, [currentLat, currentLon, accuracyM, propContributingStations]);
+  const stationInfluences = propContributingStations ?? computedInfluences;
 
-  // Handle Live Track Move (W3C Geolocation API)
   const handleTrackMove = () => {
-    if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
-      return;
+    if (onTrackMove) {
+      onTrackMove();
     }
-    setIsTracking(true);
-    setGpsMessage('Acquiring satellite GNSS fix...');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setIsTracking(false);
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const acc = Math.round(pos.coords.accuracy);
-        setCurrentLat(lat);
-        setCurrentLon(lon);
-        setAccuracyM(acc);
-        setLocationName(`Live GPS (${lat.toFixed(4)}° N, ${lon.toFixed(4)}° E)`);
-        setGpsMessage(`GNSS Fix Acquired (±${acc}m accuracy)`);
-        setTimeout(() => setGpsMessage(null), 4000);
-      },
-      (err) => {
-        setIsTracking(false);
-        console.warn('GPS fix failed:', err.message);
-        setGpsMessage(`GPS unavailable (${err.message}). Using regional station.`);
-        setTimeout(() => setGpsMessage(null), 4000);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
-    );
   };
 
   // Station Selection from Map or List
   const handleSelectStationInternal = (stationId: string) => {
-    const st = OFFLINE_STATIONS.find(s => s.station_id === stationId);
-    if (st) {
-      setCurrentLat(st.latitude);
-      setCurrentLon(st.longitude);
-      setLocationName(`${st.station_name}, IN`);
-      setTempC(st.temperature_c);
-      setFeelsLikeC(st.heat_index_c);
-      setHumidity(Math.round(st.relative_humidity_pct));
-      setHeatIndexC(st.heat_index_c);
-      setRiskLevel(
-        (st.vulnerability_tier.charAt(0).toUpperCase() + st.vulnerability_tier.slice(1).toLowerCase()) as any
-      );
-      const hour = new Date().getHours();
-      const isMidday = hour >= 10 && hour <= 16;
-      setUvIndex(isMidday ? (st.temperature_c > 40 ? 9 : 7) : 3);
-      setAqi(st.temperature_c > 40 ? 112 : 78);
-      setWindKmh(Math.round(8 + (st.temperature_c % 7)));
-    }
     if (onSelectStation) {
       onSelectStation(stationId);
     }
@@ -267,19 +257,23 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
       setIsChatThinking(false);
       try {
         const res = answerHeatSafetyQuery(query, {
-          name: locationName,
-          lat: currentLat,
-          lon: currentLon,
-          tempC,
-          feelsLikeC,
-          humidity,
-          windKmh,
+          name: locationUnavailable ? undefined : locationName,
+          lat: currentLat ?? undefined,
+          lon: currentLon ?? undefined,
+          tempC: locationUnavailable ? undefined : tempC,
+          feelsLikeC: locationUnavailable ? undefined : feelsLikeC,
+          humidity: locationUnavailable ? undefined : humidity,
+          windKmh: locationUnavailable ? undefined : windKmh,
           riskTier: riskLevel
         });
         setChatResponse(res.answer);
       } catch (err) {
         console.error('Universal AI query error:', err);
-        setChatResponse(`Analysis for ${locationName}: Ambient ${tempC}°C, Heat Index ${feelsLikeC}°C (${riskLevel} Risk). Maintain continuous hydration and avoid direct midday solar exposure.`);
+        setChatResponse(
+          locationUnavailable
+            ? 'Location is currently unavailable. Mention a city name in your question (e.g., Jaipur, Delhi, Patna) or select your city to get local heat guidance.'
+            : `Analysis for ${locationName}: Ambient ${tempC}°C, Heat Index ${feelsLikeC}°C (${riskLevel} Risk). Maintain continuous hydration and avoid direct midday solar exposure.`
+        );
       }
     }, 250);
   };
@@ -303,11 +297,19 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
       color: s.temperature_c >= 44 ? '#EF4444' : (s.temperature_c >= 42 ? '#F97316' : '#F59E0B')
     }));
 
-  // Dynamic 24-Hour Diurnal Outlook Data
+  // Dynamic 24-Hour Diurnal Outlook Data (uses live hourlyForecast when matching hour exists)
   const currentHour = currentTime.getHours();
   const diurnalHours = [0, 4, 8, 12, 16, 20];
   const diurnalPoints = diurnalHours.map(h => {
-    // Diurnal variation model: T(h) = T_mean - 4.5 * cos(2*pi*(h-4)/24)
+    const matched = hourlyForecast?.hourly?.find(item => item.hour_num === h);
+    if (matched) {
+      return {
+        hour: h,
+        label: h === 0 ? '12 AM' : (h < 12 ? `${h} AM` : (h === 12 ? '12 PM' : `${h - 12} PM`)),
+        temp: Math.round(matched.temp_c * 10) / 10,
+        hi: Math.round(matched.heat_index_c * 10) / 10
+      };
+    }
     const delta = -4.5 * Math.cos((2 * Math.PI * (h - 4)) / 24);
     const t = Math.round((tempC + delta) * 10) / 10;
     const hi = Math.round((heatIndexC + delta * 1.3) * 10) / 10;
@@ -332,13 +334,51 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
     return { x, y };
   };
 
-  const activeCoords = projectGeoToSvg(currentLat, currentLon);
+  const activeCoords =
+    currentLat != null && currentLon != null ? projectGeoToSvg(currentLat, currentLon) : null;
 
   return (
     <div className="flex-1 bg-[#090F1F] text-slate-100 min-h-screen p-4 sm:p-6 space-y-5 overflow-y-auto">
       
+      {/* Location Unavailable Explicit Notice (Never silently show a fake city!) */}
+      {locationUnavailable && (
+        <div className="bg-amber-950/60 border border-amber-500/50 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-start gap-3">
+            <span className="p-2 bg-amber-500/20 text-amber-300 rounded-xl shrink-0">
+              <MapPin className="w-5 h-5" />
+            </span>
+            <div>
+              <h4 className="text-sm font-black text-amber-200">
+                Location Unavailable — Manual Selection Required
+              </h4>
+              <p className="text-xs text-amber-100/80 mt-0.5 leading-relaxed">
+                {locationErrorReason || 'Automatic GPS and network geolocation could not determine your location.'}{' '}
+                Live weather and local heat risk are paused until you pick a city/village or allow browser GPS.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {onOpenLocationPicker && (
+              <button
+                onClick={onOpenLocationPicker}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl transition shadow"
+              >
+                Select City / Village
+              </button>
+            )}
+            <button
+              onClick={handleTrackMove}
+              disabled={isTracking}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-xs rounded-xl transition"
+            >
+              {isTracking ? 'Locating...' : 'Retry GPS'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Persistent Heat Emergency Banner if Tier 4/5 (Heat Index >= 45°C) */}
-      {heatIndexC >= 45 && onTriggerEmergencyMode && (
+      {!locationUnavailable && heatIndexC >= 45 && onTriggerEmergencyMode && (
         <div className="bg-gradient-to-r from-rose-950 via-red-900 to-rose-950 border-2 border-rose-500/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg shadow-rose-950/50 animate-pulse">
           <div className="flex items-center gap-3">
             <span className="p-2 bg-rose-600 text-white rounded-xl shrink-0">
@@ -381,9 +421,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
           <div className="relative z-10 space-y-3">
             {/* Top Bar: Live Risk Tier Badge & Next Danger Window */}
             <div className="flex flex-wrap items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md ${
-                  riskLevel === 'Extreme'
+                  locationUnavailable
+                    ? 'bg-slate-700 text-slate-200'
+                    : riskLevel === 'Extreme'
                     ? 'bg-red-600 text-white animate-pulse'
                     : riskLevel === 'Very High'
                     ? 'bg-orange-500 text-white'
@@ -392,11 +434,24 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                     : 'bg-emerald-500 text-slate-950'
                 }`}>
                   <Flame className="w-3.5 h-3.5" />
-                  <span>{riskLevel} Heat Risk</span>
+                  <span>
+                    {locationUnavailable ? 'Location Required' : locationAcquiring ? 'Locating...' : `${riskLevel} Heat Risk`}
+                  </span>
                 </span>
                 <span className="text-xs font-semibold text-slate-300">
                   in <strong className="text-white">{locationName}</strong>
                 </span>
+                {!locationUnavailable && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      locationSource === 'ip_geolocation' || locationSource === 'network_cellular' || reverseSource === 'local_centroid_fallback'
+                        ? 'bg-amber-950/60 text-amber-300 border-amber-500/40'
+                        : 'bg-cyan-950/60 text-cyan-300 border-cyan-500/40'
+                    }`}
+                  >
+                    {formatLocationConfidence(locationSource, accuracyM).shortTag}
+                  </span>
+                )}
               </div>
 
               {/* Next Dangerous Time Window */}
@@ -408,12 +463,18 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
 
             {/* Current Thermal Metrics & Recommended Safety Action */}
             <div className="pt-1">
-              <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight flex flex-wrap items-baseline gap-2">
-                <span>Feels Like {feelsLikeC}°C</span>
-                <span className="text-xs sm:text-sm font-semibold text-slate-300 font-mono">
-                  (Ambient: {tempC}°C • Relative Humidity: {humidity}%)
-                </span>
-              </h2>
+              {locationUnavailable ? (
+                <h2 className="text-xl sm:text-2xl font-black text-slate-300 tracking-tight">
+                  Live Heat Reading Paused — Select Your Location
+                </h2>
+              ) : (
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight flex flex-wrap items-baseline gap-2">
+                  <span>Feels Like {feelsLikeC}°C</span>
+                  <span className="text-xs sm:text-sm font-semibold text-slate-300 font-mono">
+                    (Ambient: {tempC}°C • Relative Humidity: {humidity}%)
+                  </span>
+                </h2>
+              )}
 
               {/* Recommended Safety Action Box */}
               <div className="mt-2.5 p-3 rounded-xl bg-black/40 border border-white/10 text-xs sm:text-sm leading-relaxed text-slate-200 flex items-start gap-2.5">
@@ -421,7 +482,9 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 <div>
                   <strong className="text-white font-bold block mb-0.5">Recommended Safety Action:</strong>
                   <span>
-                    {riskLevel === 'Extreme' || heatIndexC >= 45
+                    {locationUnavailable
+                      ? 'Choose your city/village or enable GPS access so HeatShield AI can fetch verified live weather and compute local heat risk.'
+                      : riskLevel === 'Extreme' || heatIndexC >= 45
                       ? 'Halt all outdoor exertion immediately. Stay in deep shade or air-cooled rooms. Drink 500 ml water/electrolytes every 45 minutes. Watch for confusion or lack of sweat.'
                       : riskLevel === 'Very High' || heatIndexC >= 40
                       ? 'Postpone non-essential outdoor labor until after 5:00 PM. Drink water proactively every 30 minutes even without thirst. Keep heads covered.'
@@ -467,11 +530,20 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 <Radio className={`w-3.5 h-3.5 text-cyan-400 ${isTracking ? 'animate-ping' : ''}`} />
                 <span>{isTracking ? 'Locating...' : 'Track Live GPS'}</span>
               </button>
+              {onOpenLocationPicker && (
+                <button
+                  onClick={onOpenLocationPicker}
+                  className="px-3 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-xs rounded-xl border border-blue-500/40 transition flex items-center gap-1.5"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Change Location</span>
+                </button>
+              )}
               <button
                 onClick={() => onNavigateTab && onNavigateTab('villages')}
                 className="px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 transition flex items-center gap-1.5"
               >
-                <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                <Building2 className="w-3.5 h-3.5 text-amber-400" />
                 <span>All India Villages</span>
               </button>
             </div>
@@ -484,11 +556,19 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             <div className="flex items-start justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
-                  Ambient &amp; Physiological
+                  {locationUnavailable
+                    ? 'Location Required'
+                    : isLiveWeather
+                    ? `Live • ${weatherProvider || 'Open-Meteo'}${formattedObservedTime ? ` • ${formattedObservedTime}` : ''}`
+                    : 'Offline IDW Estimate • NOAA Baseline'}
                 </span>
                 <div className="flex items-baseline gap-2 mt-0.5">
-                  <span className="text-3xl sm:text-4xl font-black text-white">{tempC}°C</span>
-                  <span className="text-xs font-bold text-amber-300/90 font-mono">HI: {feelsLikeC}°C</span>
+                  <span className="text-3xl sm:text-4xl font-black text-white">
+                    {locationUnavailable ? '--°C' : `${tempC}°C`}
+                  </span>
+                  <span className="text-xs font-bold text-amber-300/90 font-mono">
+                    HI: {locationUnavailable ? '--°C' : `${feelsLikeC}°C`}
+                  </span>
                 </div>
               </div>
               <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
@@ -497,9 +577,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             </div>
 
             {/* Clear Risk Status Badge */}
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                riskLevel === 'Extreme'
+                locationUnavailable
+                  ? 'bg-slate-800 text-slate-300 border-slate-700'
+                  : riskLevel === 'Extreme'
                   ? 'bg-rose-950/60 text-rose-300 border-rose-500/40'
                   : riskLevel === 'Very High'
                   ? 'bg-orange-950/60 text-orange-300 border-orange-500/40'
@@ -508,14 +590,16 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                   : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
               }`}>
                 <Shield className="w-3 h-3" />
-                <span>Status: {riskLevel} Thermal Load</span>
+                <span>{locationUnavailable ? 'Awaiting Location' : `Status: ${riskLevel} Thermal Load`}</span>
               </span>
             </div>
 
             {/* Actionable Directive on Card */}
             <p className="text-xs text-slate-300 mt-2.5 leading-relaxed bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
               💡 <strong className="text-white font-semibold">Action:</strong>{' '}
-              {feelsLikeC >= 42
+              {locationUnavailable
+                ? 'Select a location to enable local weather and heat safety guidance.'
+                : feelsLikeC >= 42
                 ? 'High danger of cutaneous sweat evaporation failure. Drink water immediately and rest in shade.'
                 : feelsLikeC >= 36
                 ? 'Limit direct radiant heat exposure. Sip fluids regularly every 30–45 mins.'
@@ -523,30 +607,41 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             </p>
           </div>
 
-          {/* Environmental Telemetry Footer */}
+          {/* Environmental Telemetry & Provenance Footer */}
           <div className="grid grid-cols-4 gap-1.5 pt-3 mt-3 border-t border-slate-800 text-[11px] text-slate-300 text-center">
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block">Humidity</span>
               <span className="font-bold text-cyan-400 flex items-center justify-center gap-1">
-                <Droplets className="w-3 h-3" /> {humidity}%
+                <Droplets className="w-3 h-3" /> {locationUnavailable ? '--' : `${humidity}%`}
               </span>
             </div>
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block">Wind Flow</span>
               <span className="font-bold text-slate-200 flex items-center justify-center gap-1">
-                <Wind className="w-3 h-3" /> {windKmh} km/h
+                <Wind className="w-3 h-3" /> {locationUnavailable ? '--' : `${windKmh} km/h`}
               </span>
             </div>
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
-              <span className="text-[10px] text-slate-400 block">Solar UV</span>
-              <span className="font-bold text-amber-400 flex items-center justify-center gap-1">
-                <Sun className="w-3 h-3" /> {uvIndex}
+              <span className="text-[10px] text-slate-400 block">Feed</span>
+              <span
+                className={`font-bold flex items-center justify-center gap-1 ${
+                  locationUnavailable ? 'text-slate-400' : isLiveWeather ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+                title={weatherFallbackReason || undefined}
+              >
+                {locationUnavailable ? 'Paused' : isLiveWeather ? 'Live' : 'Offline'}
               </span>
             </div>
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
-              <span className="text-[10px] text-slate-400 block">Air (AQI)</span>
-              <span className="font-bold text-emerald-400 flex items-center justify-center gap-1">
-                <Shield className="w-3 h-3" /> {aqi}
+              <span className="text-[10px] text-slate-400 block">Fix</span>
+              <span className="font-bold text-cyan-300 flex items-center justify-center gap-1 truncate">
+                {locationUnavailable
+                  ? 'None'
+                  : accuracyM != null
+                  ? `±${Math.round(accuracyM)}m`
+                  : locationSource === 'manual'
+                  ? 'Manual'
+                  : 'Station'}
               </span>
             </div>
           </div>
@@ -558,12 +653,15 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
           ROW 2: STRUCTURED 3-TIER METRIC CARDS (Consistent Visual Hierarchy)
           Tier 1: Critical Biomarkers (Heat Risk & Heat Index)
           Tier 2: Meteorological Drivers (Temperature & Humidity)
-          Tier 3: Exposure Factors (UV & AQI)
           ───────────────────────────────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between text-xs text-slate-400 font-semibold px-1">
           <span className="uppercase tracking-wider text-[10px] font-bold">Biometeorological Telemetry Hierarchy</span>
-          <span className="text-[10px] text-slate-400 font-mono">Updated: {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          <span className="text-[10px] text-slate-400 font-mono">
+            {isLiveWeather && formattedObservedTime
+              ? `Observed: ${formattedObservedTime} (${weatherProvider || 'Open-Meteo'})`
+              : `NOAA Baseline (IDW): ${currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+          </span>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
@@ -576,10 +674,24 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400">Tier 1 • Primary Hazard</span>
-                <span className="text-[10px] px-2 py-0.2 rounded font-bold bg-amber-500/20 text-amber-300">Live</span>
+                <span
+                  className={`text-[10px] px-2 py-0.2 rounded font-bold ${
+                    locationUnavailable
+                      ? 'bg-slate-700 text-slate-300'
+                      : isLiveWeather
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : 'bg-amber-500/20 text-amber-300'
+                  }`}
+                >
+                  {locationUnavailable ? 'Paused' : isLiveWeather ? 'Live' : 'Offline IDW'}
+                </span>
               </div>
-              <div className="text-xl font-black text-white mt-0.5 truncate">{riskLevel} Risk</div>
-              <p className="text-xs text-slate-300 truncate">Immediate: Restrict physical exertion</p>
+              <div className="text-xl font-black text-white mt-0.5 truncate">
+                {locationUnavailable ? 'Unavailable' : `${riskLevel} Risk`}
+              </div>
+              <p className="text-xs text-slate-300 truncate">
+                {locationUnavailable ? 'Select location to calculate heat risk' : 'Rothfusz & NOAA Baseline Assessment'}
+              </p>
             </div>
           </div>
 
@@ -591,23 +703,29 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-rose-400">Tier 1 • Heat Index</span>
-                <span className="text-[10px] font-semibold text-emerald-400">Stable</span>
+                <span className="text-[10px] font-semibold text-emerald-400">
+                  {locationUnavailable ? 'N/A' : isLiveWeather ? 'Observed' : 'Estimated'}
+                </span>
               </div>
-              <div className="text-xl font-black text-white mt-0.5 font-mono">{heatIndexC}°C HI</div>
+              <div className="text-xl font-black text-white mt-0.5 font-mono">
+                {locationUnavailable ? '--°C' : `${heatIndexC}°C HI`}
+              </div>
               <p className="text-xs text-slate-300 truncate">Rothfusz Biometeorological Model</p>
             </div>
           </div>
 
-          {/* TIER 2 & 3: Ambient Temperature, Humidity, UV, AQI in remaining columns */}
+          {/* TIER 2 & 3: Ambient Temperature & Humidity */}
           <div className="sm:col-span-1 lg:col-span-1 bg-[#131E3A] border border-slate-800 rounded-2xl p-3.5 shadow flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-400">
               <span className="text-[10px] font-bold uppercase tracking-wider">Dry-Bulb</span>
               <Sun className="w-3.5 h-3.5 text-amber-400" />
             </div>
             <div className="my-1">
-              <span className="text-lg font-black text-white">{tempC}°C</span>
+              <span className="text-lg font-black text-white">{locationUnavailable ? '--°C' : `${tempC}°C`}</span>
             </div>
-            <span className="text-[10px] text-slate-400 truncate">Daily Peak: ~{tempC + 2}°C</span>
+            <span className="text-[10px] text-slate-400 truncate">
+              {locationUnavailable ? 'No coordinates' : `Daily Peak: ~${Math.round((tempC + 2) * 10) / 10}°C`}
+            </span>
           </div>
 
           <div className="sm:col-span-1 lg:col-span-1 bg-[#131E3A] border border-slate-800 rounded-2xl p-3.5 shadow flex flex-col justify-between">
@@ -616,9 +734,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               <Droplets className="w-3.5 h-3.5 text-cyan-400" />
             </div>
             <div className="my-1">
-              <span className="text-lg font-black text-white">{humidity}%</span>
+              <span className="text-lg font-black text-white">{locationUnavailable ? '--%' : `${humidity}%`}</span>
             </div>
-            <span className="text-[10px] text-slate-400 truncate">{humidity >= 60 ? 'Moisture Trap' : 'Normal Vapor'}</span>
+            <span className="text-[10px] text-slate-400 truncate">
+              {locationUnavailable ? 'No coordinates' : humidity >= 60 ? 'Moisture Trap' : 'Normal Vapor'}
+            </span>
           </div>
 
         </div>
@@ -632,9 +752,10 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
         lon={currentLon}
         stationId={selectedStationId}
         lang={lang}
+        externalForecast={hourlyForecast}
         onPeakRiskDetected={(peakHi) => {
           if (peakHi >= 45 && onTriggerEmergencyMode && riskLevel === 'Extreme') {
-            // High peak notification or trigger
+            // Peak risk telemetry hook
           }
         }}
       />
@@ -668,16 +789,18 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
 
             {/* Coordinates & Accuracy Badge */}
             <div className="mt-3">
-              <div className="flex items-baseline justify-between">
+              <div className="flex items-baseline justify-between gap-2">
                 <span className="text-sm font-mono font-bold text-white">
-                  {currentLat.toFixed(4)}° N, {currentLon.toFixed(4)}° E
+                  {currentLat != null && currentLon != null
+                    ? `${currentLat.toFixed(4)}° N, ${currentLon.toFixed(4)}° E`
+                    : 'Coordinates unavailable'}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">
-                  Accuracy: ±{accuracyM} m
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
+                  {formatLocationConfidence(locationSource, accuracyM).shortTag}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                Spatial interpolation via 4 nearest certified stations
+                NOAA GSOD Baseline (IDW k=4) • Place lookup: {reverseSource}
               </p>
               {gpsMessage && (
                 <div className="mt-2 text-[10px] text-emerald-400 bg-emerald-950/40 p-1.5 rounded-lg border border-emerald-800/60 flex items-center gap-1.5">
@@ -688,7 +811,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
 
             {/* Station Influence Breakdown Rows */}
             <div className="mt-4 space-y-3">
-              {stationInfluences.map((st, idx) => (
+              {stationInfluences.length === 0 ? (
+                <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400">
+                  Select a city or retry GPS to compute IDW baseline distances.
+                </div>
+              ) : stationInfluences.map((st, idx) => (
                 <div
                   key={idx}
                   onClick={() => handleSelectStationInternal(st.stationId)}
@@ -857,17 +984,19 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                   );
                 })}
 
-                {/* Active Station Pin Tooltip Badge */}
-                <g transform={`translate(${activeCoords.x}, ${activeCoords.y})`}>
-                  <circle cx="0" cy="0" r="5" fill="#2563EB" stroke="#FFFFFF" strokeWidth="1.5" />
-                  <rect x="8" y="-18" width="120" height="30" rx="6" fill="#0B132B" stroke="#3B82F6" strokeWidth="1" />
-                  <text x="16" y="-3" fill="#FFFFFF" fontSize="10" fontWeight="bold">
-                    {activeStation.station_name}
-                  </text>
-                  <text x="16" y="8" fill="#FBBF24" fontSize="9" fontWeight="medium">
-                    {riskLevel} ({tempC}°C)
-                  </text>
-                </g>
+                {/* Active Station / Verified User Pin Tooltip Badge (omitted when unavailable) */}
+                {activeCoords && !locationUnavailable && (
+                  <g transform={`translate(${activeCoords.x}, ${activeCoords.y})`}>
+                    <circle cx="0" cy="0" r="5" fill="#2563EB" stroke="#FFFFFF" strokeWidth="1.5" />
+                    <rect x="8" y="-18" width="136" height="30" rx="6" fill="#0B132B" stroke="#3B82F6" strokeWidth="1" />
+                    <text x="16" y="-3" fill="#FFFFFF" fontSize="9.5" fontWeight="bold">
+                      {locationName.split(',')[0].slice(0, 18)}
+                    </text>
+                    <text x="16" y="8" fill="#FBBF24" fontSize="9" fontWeight="medium">
+                      {riskLevel} ({tempC}°C)
+                    </text>
+                  </g>
+                )}
               </svg>
 
               {/* Hover Tooltip Overlay */}
@@ -1104,18 +1233,17 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               <Clock className="w-4 h-4 text-rose-400" />
               <h3 className="text-sm font-bold text-white">24-Hour Heat Outlook</h3>
             </div>
-            {/* Chart Legend */}
-            <div className="flex items-center gap-3 text-[10px] text-slate-300">
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-0.5 bg-amber-500 rounded" /> Temperature (°C)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-0.5 bg-rose-500 rounded" /> Heat Index (°C)
-              </span>
-            </div>
+            <span className="text-[10px] font-semibold text-slate-400">
+              {hourlyForecast?.is_live ? 'Open-Meteo + Diurnal' : 'Offline Diurnal Model'}
+            </span>
           </div>
 
           {/* Dynamic SVG Line Chart with "Now" marker */}
+          {locationUnavailable ? (
+            <div className="h-36 flex items-center justify-center text-xs text-slate-400 bg-slate-900/50 rounded-xl border border-slate-800 px-4 text-center">
+              Select a location or grant GPS access to view the 24-hour thermal curve.
+            </div>
+          ) : (
           <div className="relative w-full h-36 pt-2">
             <svg viewBox="0 0 320 120" className="w-full h-full overflow-visible">
               {/* Y Grid Lines */}
@@ -1172,6 +1300,7 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               ))}
             </svg>
           </div>
+          )}
         </div>
 
         {/* Card 2: Regional Comparison (Top 5 Hottest) */}
@@ -1252,7 +1381,9 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                   <span className="text-[10px] text-slate-400">2h ago</span>
                 </div>
                 <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
-                  High temperatures ({tempC}°C) expected in {locationName} today.
+                  {locationUnavailable
+                    ? 'Select a location or grant GPS access for local thermal advisory.'
+                    : `Ambient ${tempC}°C (Feels like ${feelsLikeC}°C) in ${locationName}.`}
                 </p>
               </div>
             </div>
@@ -1268,7 +1399,9 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                   <span className="text-[10px] text-slate-400">4h ago</span>
                 </div>
                 <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
-                  Drink water, stay cool! Current humidity is {humidity}%.
+                  {locationUnavailable
+                    ? 'Maintain hydration! Humidity updates once a location is set.'
+                    : `Drink water, stay cool! Current humidity is ${humidity}%.`}
                 </p>
               </div>
             </div>
@@ -1301,9 +1434,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
           <span>HeatShield AI | NOAA GSOD 2022–2025 | Live Open-Meteo | Unsupervised Climate Intelligence</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className={`w-2 h-2 rounded-full ${isLiveWeather ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
           <span>
-            Last updated: {currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} IST | Offline: Ready | v2.0.0
+            {isLiveWeather && formattedObservedTime
+              ? `Live observation: ${formattedObservedTime} | NOAA Baseline Ready | v2.0.0`
+              : `Offline IDW Baseline | Synced: ${currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })} | v2.0.0`}
           </span>
         </div>
       </footer>

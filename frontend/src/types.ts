@@ -393,6 +393,50 @@ export interface HourlyForecastItem {
   advice: string;
 }
 
+export type LocationSourceType =
+  | 'native_android'
+  | 'hardware_gps'
+  | 'network_cellular'
+  | 'ip_geolocation'
+  | 'manual'
+  | 'unavailable';
+
+export type ReverseGeocodeSource =
+  | 'nominatim'
+  | 'bigdatacloud'
+  | 'local_centroid_fallback'
+  | 'manual'
+  | 'unavailable';
+
+export type DataProvenanceType =
+  | 'live_observation'
+  | 'forecast'
+  | 'offline_estimate'
+  | 'research_baseline';
+
+export interface LiveWeatherResponse {
+  source: string;
+  source_type: DataProvenanceType | string;
+  provider: string;
+  status: 'online' | 'offline_fallback';
+  is_live: boolean;
+  latitude: number;
+  longitude: number;
+  temperature_c: number;
+  relative_humidity_pct: number;
+  dew_point_c: number;
+  wind_speed_kmh: number;
+  surface_pressure_hpa: number;
+  apparent_temperature_c: number;
+  heat_index_c: number;
+  heat_stress_index: number;
+  risk_tier: 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme';
+  observed_at: string | null;
+  estimated_at?: string | null;
+  timezone?: string | null;
+  fallback_reason?: string | null;
+}
+
 export interface HourlyForecastResponse {
   station_id?: string;
   station_name?: string;
@@ -403,6 +447,10 @@ export interface HourlyForecastResponse {
   peak_tier: 'Low' | 'Moderate' | 'High' | 'Very High' | 'Extreme';
   generated_at: string;
   data_source?: string;
+  source_type?: DataProvenanceType | string;
+  provider?: string;
+  timezone?: string;
+  fallback_reason?: string;
   is_live?: boolean;
   hourly: HourlyForecastItem[];
 }
@@ -586,6 +634,7 @@ export interface LocationPredictionRequest {
   longitude: number;
   accuracy_m?: number;
   mode?: 'online' | 'offline';
+  location_source?: LocationSourceType | string;
 }
 
 export interface LocationPredictionResponse {
@@ -594,13 +643,21 @@ export interface LocationPredictionResponse {
     longitude: number;
     accuracy_m: number;
     timestamp?: number;
+    source?: string;
   };
-  location_source: 'GPS' | 'CACHED_GPS' | 'SELECTED' | 'FALLBACK';
+  location_source: 'GPS' | 'CACHED_GPS' | 'SELECTED' | 'FALLBACK' | LocationSourceType | string;
   data_source: {
     mode: 'online' | 'offline';
+    source_type?: DataProvenanceType | string;
+    is_live?: boolean;
+    provider?: string;
+    observed_at?: string | null;
+    timezone?: string | null;
+    fallback_reason?: string | null;
     stations_used: StationUsed[];
     interpolation: string;
     provider_note?: string;
+    research_baseline?: string;
   };
   weather: {
     temperature: number;

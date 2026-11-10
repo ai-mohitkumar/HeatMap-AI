@@ -10,6 +10,8 @@ interface MobileLocationModalProps {
   onSelectLocation: (loc: { name: string; lat: number; lon: number; district?: string; state?: string }) => void;
   onTrackMove: () => void;
   isTracking?: boolean;
+  locationUnavailable?: boolean;
+  errorReason?: string | null;
 }
 
 export const MobileLocationModal: React.FC<MobileLocationModalProps> = ({
@@ -18,11 +20,13 @@ export const MobileLocationModal: React.FC<MobileLocationModalProps> = ({
   onSelectStation,
   onSelectLocation,
   onTrackMove,
-  isTracking = false
+  isTracking = false,
+  locationUnavailable = false,
+  errorReason
 }) => {
-  if (!isOpen) return null;
-
   const [query, setQuery] = useState('');
+
+  if (!isOpen) return null;
 
   // Top preset cities in India for 1-tap selection
   const presets = [
@@ -66,6 +70,14 @@ export const MobileLocationModal: React.FC<MobileLocationModalProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Location Unavailable Notice */}
+        {locationUnavailable && (
+          <div className="mt-3 p-2.5 rounded-xl bg-amber-950/50 border border-amber-500/40 text-amber-200 text-[11px] leading-relaxed">
+            <strong>Automatic location unavailable:</strong>{' '}
+            {errorReason || 'GPS and IP lookup could not determine your position.'} Search or pick your city/village below.
+          </div>
+        )}
 
         {/* GPS Quick Track Button */}
         <div className="py-3">
