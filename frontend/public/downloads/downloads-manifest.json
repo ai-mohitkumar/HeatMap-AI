@@ -1,13 +1,13 @@
 {
-  "buildTimestamp": "2026-11-10T14:37:11+05:30",
+  "buildTimestamp": "2026-11-10T15:24:34+05:30",
   "packages": {
     "android": {
       "fileName": "HeatShield-AI-v2.0-universal.apk",
       "url": "/downloads/HeatShield-AI-v2.0-universal.apk",
-      "sizeBytes": 628394,
-      "sizeFormatted": "613.7 KB",
-      "version": "2.0.5",
-      "sha256": "64c0fac8e1514a193c2a66c6bbfa6a13238aa53d9cf9a4ed51778d559e94171c",
+      "sizeBytes": 632490,
+      "sizeFormatted": "617.7 KB",
+      "version": "2.0.6",
+      "sha256": "32299e05281b884bab4059f9cc47151fb0d8bd6f5ff321c71e73cf0b8abea7cd",
       "format": "APK (Native Signed Package)",
       "compatibility": "Android 7.0 to 15 (Universal ARM64, ARMv7, x86_64)"
     },
@@ -16,8 +16,8 @@
       "url": "/downloads/HeatShield-AI-iOS.mobileconfig",
       "sizeBytes": 1877,
       "sizeFormatted": "1.8 KB",
-      "version": "2.0.5",
-      "sha256": "c22bdd7efe4785ea164740cca134b8e78190ed470025bb3eaf3d5d6e8dfb4f75",
+      "version": "2.0.6",
+      "sha256": "036b7bd472f1441a01e9243d513ceeb3fe0f77edaa1d53e0a87e3b7111405d06",
       "format": "Apple Configuration Profile (.mobileconfig)",
       "compatibility": "iOS 15.0+, iPadOS 15.0+, macOS Monterey+"
     },
@@ -26,18 +26,18 @@
       "url": "/downloads/HeatShield-WearOS-Companion.apk",
       "sizeBytes": 12833,
       "sizeFormatted": "12.5 KB",
-      "version": "2.0.5",
-      "sha256": "290cc2c1aec17d0a7d40d2fdbb2c69dda012f94afb1cd69f737f188771e9608a",
+      "version": "2.0.6",
+      "sha256": "72860e6b6bd7df9027260dc16607cfe7a819498e557acef738107e6595797068",
       "format": "Wear OS Native Signed APK",
       "compatibility": "Wear OS 3.0+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3"
     },
     "desktop": {
       "fileName": "HeatShield-AI-Desktop-Windows.zip",
       "url": "/downloads/HeatShield-AI-Desktop-Windows.zip",
-      "sizeBytes": 610464,
-      "sizeFormatted": "596.2 KB",
-      "version": "2.0.5",
-      "sha256": "2c55f9050af2349eee5a50aa2cce490e2803db52824374668658bc7f86211557",
+      "sizeBytes": 614832,
+      "sizeFormatted": "600.4 KB",
+      "version": "2.0.6",
+      "sha256": "800276aa8335b5daee8803ccffd59551a39ad7acf291b834dc5e6cd7e05bacfd",
       "format": "Windows / macOS Portable (.zip)",
       "compatibility": "Windows 10/11, macOS 12+, Linux x86_64"
     },
@@ -46,8 +46,8 @@
       "url": "/downloads/HeatShield-AI-Master-Offline-Suite.zip",
       "sizeBytes": 19218,
       "sizeFormatted": "18.8 KB",
-      "version": "2.0.5",
-      "sha256": "c83430900f7cf6b95efa5d3adaea22bf4d9719daeb8b2a3d1ada894d9dd56a9f",
+      "version": "2.0.6",
+      "sha256": "7c0f3f272860aaa1a1e242ad86a2f515f09673a1727a1c9b817cbc9532a91326",
       "format": "Full Master Research Package (.zip)",
       "compatibility": "All Platforms (Universal Offline Bundle)"
     }

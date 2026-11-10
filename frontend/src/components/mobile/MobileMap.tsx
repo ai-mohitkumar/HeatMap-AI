@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, Circle, CircleMarker, Popup, useMap } from 'react-leaflet';
 import {
   Shield,
   Maximize2,
   MapPin,
   X,
   ChevronRight,
-  LocateFixed
+  LocateFixed,
+  Radio,
+  Compass
 } from 'lucide-react';
 import { OFFLINE_STATIONS } from '../../utils/offlineEngine';
+import { formatLocationConfidence } from '../../utils/geolocationService';
 import { ResilientMapLayers, MapResizeObserver } from '../shared/ResilientMapLayers';
 import { ErrorBoundary } from '../ErrorBoundary';
+import type { LocationSourceType } from '../../types';
 
 interface MobileMapProps {
   currentLat: number | null;
@@ -24,6 +28,12 @@ interface MobileMapProps {
   isTabView?: boolean;
   onToggleFullscreen?: () => void;
   locationUnavailable?: boolean;
+  locationAcquiring?: boolean;
+  accuracyM?: number | null;
+  locationSource?: LocationSourceType;
+  isTracking?: boolean;
+  onTrackMove?: () => void;
+  onOpenLocationPicker?: () => void;
 }
 
 // Synchronize center/zoom ONLY when coordinates, zoom, or explicit recenter nonce change
@@ -69,7 +79,13 @@ export const MobileMap: React.FC<MobileMapProps> = ({
   isFullscreen = false,
   isTabView = false,
   onToggleFullscreen,
-  locationUnavailable = false
+  locationUnavailable = false,
+  locationAcquiring = false,
+  accuracyM = null,
+  locationSource = 'unavailable',
+  isTracking = false,
+  onTrackMove,
+  onOpenLocationPicker
 }) => {
   const [viewMode, setViewMode] = useState<'leaflet' | 'radar'>('leaflet');
   const [mapLayer, setMapLayer] = useState<'heat_risk' | 'clusters' | 'anomalies' | 'stations'>('heat_risk');
@@ -91,7 +107,8 @@ export const MobileMap: React.FC<MobileMapProps> = ({
   // Use India geographic overview center ONLY for framing viewport when user location is unavailable
   const centerLat = hasVerifiedLocation ? (currentLat as number) : 22.5;
   const centerLon = hasVerifiedLocation ? (currentLon as number) : 78.5;
-  const mapZoom = hasVerifiedLocation ? 7 : 4;
+  const mapZoom = hasVerifiedLocation ? (accuracyM && accuracyM > 3000 ? 9 : 10) : 4;
+  const confidence = formatLocationConfidence(locationSource, accuracyM);
 
   // Project (lat, lon) to SVG (x, y) coordinates for radar view
   const project = (lat: number, lon: number) => {
@@ -171,6 +188,84 @@ export const MobileMap: React.FC<MobileMapProps> = ({
         </div>
       </div>
 
+      {/* Live Location Telemetry Banner */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px]">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {hasVerifiedLocation ? (
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500 border border-white" />
+            </span>
+          ) : locationAcquiring ? (
+            <Compass className="w-3.5 h-3.5 text-cyan-400 animate-spin shrink-0" />
+          ) : (
+            <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          )}
+
+          <div className="min-w-0 flex-1">
+            {hasVerifiedLocation ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-bold text-white truncate max-w-[160px]">
+                  {locationName}
+                </span>
+                <span className="font-mono text-[10px] text-cyan-300">
+                  ({(currentLat as number).toFixed(3)}°, {(currentLon as number).toFixed(3)}°)
+                </span>
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                    confidence.isApproximate
+                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/35'
+                      : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35'
+                  }`}
+                >
+                  {confidence.shortTag}
+                </span>
+                {locationAcquiring && (
+                  <span className="text-[9px] text-cyan-300 animate-pulse">Refining GPS...</span>
+                )}
+              </div>
+            ) : locationAcquiring ? (
+              <span className="text-cyan-200 font-semibold">Acquiring live GPS / IP coordinates...</span>
+            ) : (
+              <span className="text-amber-200 font-semibold">Live pin unavailable — tap GPS or City</span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {hasVerifiedLocation && viewMode === 'leaflet' && (
+            <button
+              type="button"
+              onClick={() => setRecenterNonce((n) => n + 1)}
+              className="px-2 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-200 font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+            >
+              <LocateFixed className="w-3 h-3" />
+              <span>Pin</span>
+            </button>
+          )}
+          {onTrackMove && (
+            <button
+              type="button"
+              onClick={onTrackMove}
+              disabled={isTracking}
+              className="px-2 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold text-[10px] flex items-center gap-1 cursor-pointer"
+            >
+              <Radio className={`w-3 h-3 ${isTracking ? 'animate-ping' : ''}`} />
+              <span>{isTracking ? 'Locating' : 'GPS'}</span>
+            </button>
+          )}
+          {onOpenLocationPicker && (
+            <button
+              type="button"
+              onClick={onOpenLocationPicker}
+              className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-[10px] cursor-pointer"
+            >
+              City
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Layer Switcher Pills */}
       <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-xs">
         {[
@@ -218,38 +313,7 @@ export const MobileMap: React.FC<MobileMapProps> = ({
                 recenterNonce={recenterNonce}
               />
 
-              {/* User Location Marker (only rendered when location is verified) */}
-              {hasVerifiedLocation && (
-                <CircleMarker
-                  center={[currentLat as number, currentLon as number]}
-                  radius={8}
-                  pathOptions={{
-                    color: '#ffffff',
-                    weight: 2,
-                    fillColor: '#2563EB',
-                    fillOpacity: 1
-                  }}
-                  eventHandlers={{
-                    click: () => {
-                      setInspectedStation(null);
-                      setInspectUserLocation(true);
-                    }
-                  }}
-                >
-                  <Popup>
-                    <div className="p-1 text-slate-900 font-sans text-xs">
-                      <strong className="block text-blue-600 font-bold">Your Location</strong>
-                      <span className="font-semibold text-slate-800">{locationName}</span>
-                      <div className="mt-1 flex items-center justify-between text-[11px] gap-2">
-                        <span>Heat Index: <strong>{heatIndexC.toFixed(1)}°C</strong></span>
-                        <span className="font-bold text-rose-600">{riskLevel}</span>
-                      </div>
-                    </div>
-                  </Popup>
-                </CircleMarker>
-              )}
-
-              {/* 46 Station Markers */}
+              {/* 46 Station Markers rendered BEFORE User Pin so user remains on top */}
               {OFFLINE_STATIONS.map((st) => {
                 const isSelected = st.station_id === selectedStationId;
                 let dotColor = '#FFFFFF';
@@ -306,6 +370,68 @@ export const MobileMap: React.FC<MobileMapProps> = ({
                   </CircleMarker>
                 );
               })}
+
+              {/* User Live Location Pin & Accuracy Ring (rendered AFTER stations so it stays prominent) */}
+              {hasVerifiedLocation && (
+                <>
+                  {accuracyM != null && accuracyM >= 300 && (
+                    <Circle
+                      center={[currentLat as number, currentLon as number]}
+                      radius={Math.min(accuracyM, 25000)}
+                      pathOptions={{
+                        color: '#38BDF8',
+                        weight: 1.5,
+                        dashArray: '5 5',
+                        fillColor: '#38BDF8',
+                        fillOpacity: 0.1
+                      }}
+                    />
+                  )}
+                  <CircleMarker
+                    center={[currentLat as number, currentLon as number]}
+                    radius={14}
+                    pathOptions={{
+                      color: '#38BDF8',
+                      weight: 1.5,
+                      fillColor: '#38BDF8',
+                      fillOpacity: 0.28
+                    }}
+                  />
+                  <CircleMarker
+                    center={[currentLat as number, currentLon as number]}
+                    radius={8}
+                    pathOptions={{
+                      color: '#ffffff',
+                      weight: 2.5,
+                      fillColor: '#2563EB',
+                      fillOpacity: 1
+                    }}
+                    eventHandlers={{
+                      click: () => {
+                        setInspectedStation(null);
+                        setInspectUserLocation(true);
+                      }
+                    }}
+                  >
+                    <Popup>
+                      <div className="p-1 text-slate-900 font-sans text-xs min-w-[170px]">
+                        <strong className="block text-blue-600 font-bold">Your Live Location</strong>
+                        <span className="font-semibold text-slate-800 block">{locationName}</span>
+                        <span className="text-[10px] font-mono text-slate-500 block">
+                          {(currentLat as number).toFixed(4)}° N, {(currentLon as number).toFixed(4)}° E
+                        </span>
+                        <div className="mt-1 flex items-center justify-between text-[11px] gap-2">
+                          <span>Heat Index: <strong>{heatIndexC.toFixed(1)}°C</strong></span>
+                          <span className="font-bold text-rose-600">{riskLevel}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          {confidence.label} ({confidence.accuracyLabel})
+                        </span>
+                      </div>
+                    </Popup>
+                  </CircleMarker>
+                </>
+              )}
             </MapContainer>
           </ErrorBoundary>
         ) : (
@@ -413,8 +539,11 @@ export const MobileMap: React.FC<MobileMapProps> = ({
         <div className="absolute bottom-2 left-2 z-[1000] px-2.5 py-1.5 rounded-lg bg-slate-950/85 backdrop-blur border border-slate-800 text-[10px] text-slate-300 flex items-center gap-2.5 shadow-md">
           {hasVerifiedLocation ? (
             <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-blue-500 ring-2 ring-blue-500/30" /> You
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 ring-2 ring-cyan-400/50 border border-white" />
+              <span>You{locationAcquiring ? ' (Refining...)' : ''}</span>
             </span>
+          ) : locationAcquiring ? (
+            <span className="text-cyan-300 font-semibold animate-pulse">Locating you...</span>
           ) : (
             <span className="text-amber-300 font-semibold">No user pin</span>
           )}

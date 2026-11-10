@@ -78,6 +78,23 @@ const API_BASE = configuredApiUrl
   : '/api';
 const IS_FILE_PROTOCOL_NO_BACKEND =
   typeof window !== 'undefined' && window.location?.protocol === 'file:' && !configuredApiUrl;
+let isLocalBundleNoBackend = false;
+
+async function detectLocalBundle404(res: Response): Promise<boolean> {
+  if (res.status !== 404) return false;
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) return false;
+  try {
+    const payload = await res.clone().json();
+    if (payload?.error === 'offline_local_bundle' || payload?.offline === true) {
+      isLocalBundleNoBackend = true;
+      return true;
+    }
+  } catch {
+    // ignore parse failure
+  }
+  return false;
+}
 
 /**
  * Cross-browser fetch with AbortController timeout (safe on older iOS Safari / Android WebViews
@@ -111,11 +128,12 @@ async function fetchWithTimeout(
  * 4. Awaits res.json() safely inside the try-block
  */
 async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs: number = 4500): Promise<T> {
-  if (IS_FILE_PROTOCOL_NO_BACKEND && url.startsWith('/api')) {
-    throw new Error('Running from file:// bundle without remote backend URL');
+  if ((IS_FILE_PROTOCOL_NO_BACKEND || isLocalBundleNoBackend) && url.startsWith('/api')) {
+    throw new Error('Running from standalone local bundle without backend proxy');
   }
   const res = await fetchWithTimeout(url, init, timeoutMs);
   if (!res.ok) {
+    await detectLocalBundle404(res);
     throw new Error(`HTTP error ${res.status}: ${res.statusText}`);
   }
   const contentType = res.headers.get('content-type') || '';
@@ -491,7 +509,7 @@ export const api = {
     }
 
     let backendFallback: HourlyForecastResponse | null = null;
-    if (!IS_FILE_PROTOCOL_NO_BACKEND) {
+    if (!IS_FILE_PROTOCOL_NO_BACKEND && !isLocalBundleNoBackend) {
       try {
         const stParam = stationId ? `&station_id=${encodeURIComponent(stationId)}` : '';
         const res = await fetchWithTimeout(
@@ -499,18 +517,22 @@ export const api = {
           {},
           4500
         );
-        const ct = res.headers.get('content-type') || '';
-        if (res.ok && ct.includes('application/json')) {
-          const data = (await res.json()) as HourlyForecastResponse;
-          if (data && data.is_live && data.source_type === 'forecast' && Array.isArray(data.hourly) && data.hourly.length > 0) {
-            return data;
-          }
-          backendFallback = data;
-          fallbackReason = data?.fallback_reason || 'Backend returned offline forecast estimate';
-          console.warn('[API] Backend forecast unavailable or offline; attempting direct Open-Meteo:', fallbackReason);
+        if (await detectLocalBundle404(res)) {
+          fallbackReason = 'Standalone local bundle using direct Open-Meteo API';
         } else {
-          fallbackReason = `Backend forecast returned HTTP ${res.status} (${ct || 'unknown content-type'})`;
-          console.warn('[API] /safety/forecast/hourly non-JSON or error:', fallbackReason);
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && ct.includes('application/json')) {
+            const data = (await res.json()) as HourlyForecastResponse;
+            if (data && data.is_live && data.source_type === 'forecast' && Array.isArray(data.hourly) && data.hourly.length > 0) {
+              return data;
+            }
+            backendFallback = data;
+            fallbackReason = data?.fallback_reason || 'Backend returned offline forecast estimate';
+            console.warn('[API] Backend forecast unavailable or offline; attempting direct Open-Meteo:', fallbackReason);
+          } else {
+            fallbackReason = `Backend forecast returned HTTP ${res.status} (${ct || 'unknown content-type'})`;
+            console.warn('[API] /safety/forecast/hourly non-JSON or error:', fallbackReason);
+          }
         }
       } catch (err) {
         fallbackReason = err instanceof Error ? err.message : String(err);
@@ -633,27 +655,31 @@ export const api = {
     }
 
     let backendFallback: LiveWeatherResponse | null = null;
-    if (!IS_FILE_PROTOCOL_NO_BACKEND) {
+    if (!IS_FILE_PROTOCOL_NO_BACKEND && !isLocalBundleNoBackend) {
       try {
         const res = await fetchWithTimeout(
           `${API_BASE}/safety/weather/live?latitude=${lat}&longitude=${lon}`,
           {},
           4500
         );
-        const ct = res.headers.get('content-type') || '';
-        if (res.ok && ct.includes('application/json')) {
-          const data = (await res.json()) as LiveWeatherResponse;
-          if (data && data.is_live && typeof data.temperature_c === 'number') {
-            return data;
-          }
-          if (data && typeof data.temperature_c === 'number') {
-            backendFallback = data;
-            fallbackReason = data.fallback_reason || 'Backend live weather unavailable';
-            console.warn('[API] Backend returned offline weather fallback; attempting direct Open-Meteo:', fallbackReason);
-          }
+        if (await detectLocalBundle404(res)) {
+          fallbackReason = 'Standalone local bundle using direct Open-Meteo API';
         } else {
-          fallbackReason = `Backend weather returned HTTP ${res.status} (${ct || 'unknown content-type'})`;
-          console.warn('[API] /safety/weather/live non-JSON or incomplete:', fallbackReason);
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && ct.includes('application/json')) {
+            const data = (await res.json()) as LiveWeatherResponse;
+            if (data && data.is_live && typeof data.temperature_c === 'number') {
+              return data;
+            }
+            if (data && typeof data.temperature_c === 'number') {
+              backendFallback = data;
+              fallbackReason = data.fallback_reason || 'Backend live weather unavailable';
+              console.warn('[API] Backend returned offline weather fallback; attempting direct Open-Meteo:', fallbackReason);
+            }
+          } else {
+            fallbackReason = `Backend weather returned HTTP ${res.status} (${ct || 'unknown content-type'})`;
+            console.warn('[API] /safety/weather/live non-JSON or incomplete:', fallbackReason);
+          }
         }
       } catch (err) {
         fallbackReason = err instanceof Error ? err.message : String(err);

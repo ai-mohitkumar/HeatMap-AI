@@ -185,6 +185,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
         hasUnreadAlerts={true}
         locationSource={locationSource}
         locationUnavailable={locationUnavailable}
+        locationAcquiring={locationAcquiring}
       />
 
       {/* Live GPS / Location Status Notification */}
@@ -494,7 +495,13 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({
               onSelectStation={onSelectStation}
               isFullscreen={false}
               isTabView={true}
-              locationUnavailable={locationUnavailable || locationAcquiring}
+              locationUnavailable={locationUnavailable}
+              locationAcquiring={locationAcquiring}
+              accuracyM={accuracyM}
+              locationSource={locationSource}
+              isTracking={isTracking}
+              onTrackMove={onTrackMove}
+              onOpenLocationPicker={() => setIsLocationModalOpen(true)}
             />
           </div>
         )}

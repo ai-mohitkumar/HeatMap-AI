@@ -139,7 +139,7 @@ def _fetch_public_ip_geo(query_ip: str) -> Tuple[Optional[Dict[str, Any]], Optio
         ),
         (
             "freeipapi.com",
-            f"https://freeipapi.com/api/json/{query_ip}",
+            f"https://free.freeipapi.com/api/v1/json/{query_ip}",
             lambda d: d.get("latitude") is not None and d.get("longitude") is not None,
             lambda d: (
                 float(d["latitude"]),
@@ -147,6 +147,18 @@ def _fetch_public_ip_geo(query_ip: str) -> Tuple[Optional[Dict[str, Any]], Optio
                 d.get("cityName"),
                 d.get("regionName"),
                 d.get("countryName"),
+            ),
+        ),
+        (
+            "geojs.io",
+            f"https://get.geojs.io/v1/ip/geo/{query_ip}.json",
+            lambda d: d.get("latitude") is not None and d.get("longitude") is not None,
+            lambda d: (
+                float(d["latitude"]),
+                float(d["longitude"]),
+                d.get("city"),
+                d.get("region"),
+                d.get("country"),
             ),
         ),
     ]
@@ -349,14 +361,43 @@ def _query_nominatim_reverse(lat: float, lon: float) -> Tuple[Optional[Dict[str,
         return None, str(exc)
 
 
+def _query_bigdatacloud_reverse(lat: float, lon: float) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    url = (
+        f"https://api.bigdatacloud.net/data/reverse-geocode-client"
+        f"?latitude={lat:.6f}&longitude={lon:.6f}&localityLanguage=en"
+    )
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "HeatShieldAI/2.0 (https://github.com/ai-mohitkumar/HeatMap-AI)",
+                "Accept": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            if resp.status != 200:
+                return None, f"BigDataCloud returned HTTP {resp.status}"
+            payload = json.loads(resp.read().decode("utf-8"))
+            if isinstance(payload, dict) and (
+                payload.get("city")
+                or payload.get("locality")
+                or payload.get("principalSubdivision")
+            ):
+                return payload, None
+            return None, "BigDataCloud returned empty place payload"
+    except Exception as exc:
+        logger.warning("BigDataCloud reverse geocode failed for (%.4f, %.4f): %s", lat, lon, exc)
+        return None, str(exc)
+
+
 @router.get("/reverse", response_model=Dict[str, Any])
 def reverse_geocode(
     lat: float = Query(..., ge=-90.0, le=90.0, description="Latitude"),
     lon: float = Query(..., ge=-180.0, le=180.0, description="Longitude")
 ):
     """
-    Reverse geocodes GPS coordinates via Nominatim while retaining original coordinates and
-    matching against India district records (falling back to Haversine nearest centroid if offline).
+    Reverse geocodes GPS coordinates via Nominatim (with BigDataCloud fallback) while retaining
+    original coordinates and matching against India district records (Haversine centroid only when offline).
     """
     in_india = 6.0 <= lat <= 38.0 and 68.0 <= lon <= 98.0
     nearest = find_nearest_district(lat, lon) if in_india else None
@@ -424,6 +465,77 @@ def reverse_geocode(
                 else None
             ),
         }
+
+    # Secondary online reverse-geocode fallback (avoids false offline centroid when Nominatim 429s)
+    bdc_data, bdc_err = _query_bigdatacloud_reverse(lat, lon)
+    if bdc_data:
+        admin_list = (bdc_data.get("localityInfo") or {}).get("administrative") or []
+        admin_district = ""
+        for entry in admin_list:
+            if isinstance(entry, dict) and entry.get("adminLevel") in (5, 6) and entry.get("name"):
+                admin_district = str(entry["name"])
+                break
+        clean_district = (
+            admin_district.replace(" District", "")
+            .replace(" district", "")
+            .strip()
+        )
+        place_name = (
+            bdc_data.get("city")
+            or bdc_data.get("locality")
+            or clean_district
+        )
+        state_name = bdc_data.get("principalSubdivision")
+        country_name = bdc_data.get("countryName")
+        resolved_district_name = clean_district or (place_name or "Unknown")
+
+        matched_district = find_district_by_name(resolved_district_name, state_name) if resolved_district_name else None
+        if matched_district:
+            dist_km = round(_haversine_km(lat, lon, matched_district["latitude"], matched_district["longitude"]), 1)
+            district_obj = matched_district
+        elif nearest:
+            dist_km = nearest["distance_km"]
+            district_obj = nearest["district"]
+        else:
+            dist_km = 0.0
+            district_obj = {
+                "district_name": resolved_district_name,
+                "state_name": state_name or "",
+                "state_code": "",
+                "latitude": lat,
+                "longitude": lon,
+                "climate_zone": "Global",
+            }
+
+        return {
+            "place_name": place_name or resolved_district_name,
+            "city": bdc_data.get("city") or bdc_data.get("locality") or place_name,
+            "locality": bdc_data.get("locality"),
+            "district_name": district_obj.get("district_name", resolved_district_name),
+            "district": district_obj,
+            "state": state_name or district_obj.get("state_name"),
+            "state_code": district_obj.get("state_code", ""),
+            "country": country_name or ("India" if in_india else None),
+            "display_name": ", ".join([p for p in [place_name, state_name, country_name] if p]),
+            "distance_km": dist_km,
+            "latitude": lat,
+            "longitude": lon,
+            "climate_zone": district_obj.get("climate_zone", "Standard"),
+            "reverse_source": "bigdatacloud",
+            "is_approximate_centroid": False,
+            "nearest_centroid": (
+                {
+                    "district_name": nearest["district"]["district_name"],
+                    "state_name": nearest["state"],
+                    "distance_km": nearest["distance_km"],
+                }
+                if nearest
+                else None
+            ),
+        }
+
+    if bdc_err:
+        err_reason = f"{err_reason}; {bdc_err}" if err_reason else bdc_err
 
     # Offline / Nominatim unreachable fallback
     if nearest:

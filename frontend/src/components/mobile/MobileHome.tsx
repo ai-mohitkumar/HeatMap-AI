@@ -170,7 +170,7 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         baseHumidity={humidityPct}
         baseWind={windKmh}
         hourlyForecast={hourlyForecast}
-        locationUnavailable={locationUnavailable || locationAcquiring}
+        locationUnavailable={locationUnavailable || currentLat == null}
       />
 
       {/* 6. Exact Location & 4-Station IDW Influence Breakdown */}
@@ -180,7 +180,8 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         accuracyM={accuracyM}
         locationSource={locationSource}
         reverseSource={reverseSource}
-        locationUnavailable={locationUnavailable || locationAcquiring}
+        locationUnavailable={locationUnavailable}
+        locationAcquiring={locationAcquiring}
         contributingStations={contributingStations}
         onTrackMove={onTrackMove}
         isTracking={isTracking}
@@ -198,7 +199,13 @@ export const MobileHome: React.FC<MobileHomeProps> = ({
         selectedStationId={selectedStationId}
         onSelectStation={onSelectStation}
         onToggleFullscreen={() => onNavigateTab('map')}
-        locationUnavailable={locationUnavailable || locationAcquiring}
+        locationUnavailable={locationUnavailable}
+        locationAcquiring={locationAcquiring}
+        accuracyM={accuracyM}
+        locationSource={locationSource}
+        isTracking={isTracking}
+        onTrackMove={onTrackMove}
+        onOpenLocationPicker={onOpenLocationPicker}
       />
 
       {/* 8. Quick AI Assistant Launcher Card */}

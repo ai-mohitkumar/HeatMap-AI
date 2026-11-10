@@ -550,3 +550,82 @@ def test_download_package_builder_and_manifest_integrity():
             assert "server.ps1" in names
             assert "launch-mac-linux.sh" in names
             assert "web/index.html" in names
+
+
+def test_reverse_geocode_nominatim_429_falls_back_to_bigdatacloud(client):
+    """
+    When Nominatim rate-limits (HTTP 429) on cloud hosts, reverse_geocode must
+    fall back to BigDataCloud and avoid flagging offline centroid fallback.
+    """
+    geo_api._REVERSE_CACHE.clear()
+    lat, lon = 26.9124, 75.7873
+
+    def fake_urlopen(req, timeout=3.0):
+        if "nominatim.openstreetmap.org" in req.full_url:
+            raise urllib.error.HTTPError(
+                req.full_url, 429, "Too Many Requests", hdrs=None, fp=None
+            )
+        if "api.bigdatacloud.net" in req.full_url:
+            return _MockHTTPResponse(
+                {
+                    "city": "Jaipur",
+                    "locality": "Bani Park",
+                    "principalSubdivision": "Rajasthan",
+                    "countryName": "India",
+                    "localityInfo": {
+                        "administrative": [
+                            {"adminLevel": 5, "name": "Jaipur District"}
+                        ]
+                    },
+                }
+            )
+        raise AssertionError(f"Unexpected URL requested: {req.full_url}")
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        resp = client.get(f"/api/geo/reverse?lat={lat}&lon={lon}")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["reverse_source"] == "bigdatacloud"
+    assert data["is_approximate_centroid"] is False
+    assert data["city"] == "Jaipur"
+    assert data["district_name"] == "Jaipur"
+    assert data["latitude"] == pytest.approx(lat, abs=1e-6)
+    assert data["longitude"] == pytest.approx(lon, abs=1e-6)
+
+
+def test_live_location_resilience_tokens():
+    """
+    Verify geolocation service, native APK bridge, and map components preserve
+    preliminary IP display, multi-provider fallbacks, and live pin rendering controls.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+
+    geo_ts = (root / "frontend" / "src" / "utils" / "geolocationService.ts").read_text(encoding="utf-8")
+    for token in [
+        "free.freeipapi.com/api/v1/json",
+        "get.geojs.io/v1/ip/geo.json",
+        "offline_local_bundle",
+        "onPreliminaryLocation",
+        "firstFulfilled",
+        "__onNativeGpsPermissionResult",
+    ]:
+        assert token in geo_ts, f"Missing {token} in geolocationService.ts"
+
+    builder_src = (root / "scripts" / "build_download_packages.py").read_text(encoding="utf-8")
+    for token in [
+        "isWaitingForPermission",
+        "__onNativeGpsPermissionResult",
+        "requestLocationUpdates",
+    ]:
+        assert token in builder_src, f"Missing {token} in build_download_packages.py"
+
+    priority_map = (root / "frontend" / "src" / "components" / "PriorityMap.tsx").read_text(encoding="utf-8")
+    assert "Center on My Pin" in priority_map
+    assert "hasVerifiedUser" in priority_map
+
+    mobile_map = (root / "frontend" / "src" / "components" / "mobile" / "MobileMap.tsx").read_text(encoding="utf-8")
+    assert "hasVerifiedLocation" in mobile_map
+    assert "Refining GPS..." in mobile_map

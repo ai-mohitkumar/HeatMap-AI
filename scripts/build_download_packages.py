@@ -122,8 +122,8 @@ def build_android_apk():
         manifest = """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ai.heatshield.app"
-    android:versionCode="205"
-    android:versionName="2.0.5">
+    android:versionCode="206"
+    android:versionName="2.0.6">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -236,7 +236,14 @@ public class MainActivity extends Activity {
     private WebView mWebView;
     private LocalAssetServer mAssetServer;
     private LocationListener mActiveLocationListener;
+    private Runnable mTimeoutRunnable;
     private Handler mHandler;
+    private volatile boolean mPermissionRequestInFlight = false;
+    private boolean mHasCachedFix = false;
+    private double mCachedLat;
+    private double mCachedLon;
+    private float mCachedAcc;
+    private long mCachedTimeMs;
     private static final int REQ_LOC = 1001;
 
     private static final class LocalAssetServer {
@@ -411,11 +418,16 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean isWaitingForPermission() {
+            return mPermissionRequestInFlight;
+        }
+
+        @JavascriptInterface
         public void requestLocation() {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    acquireNativeLocation();
+                    acquireNativeLocation(true);
                 }
             });
         }
@@ -488,7 +500,7 @@ public class MainActivity extends Activity {
         // Strip WebView '; wv)' token so public map tile CDNs do not block tile requests
         String ua = settings.getUserAgentString();
         if (ua != null) {
-            ua = ua.replace("; wv)", ")").replace("; wv;", ";").trim() + " HeatShieldAI/2.0.5";
+            ua = ua.replace("; wv)", ")").replace("; wv;", ";").trim() + " HeatShieldAI/2.0.6";
             settings.setUserAgentString(ua);
         }
 
@@ -518,12 +530,13 @@ public class MainActivity extends Activity {
         });
 
         if (!hasAnyLocationPermission()) {
+            mPermissionRequestInFlight = true;
             requestPermissions(new String[]{
                 android.Manifest.permission.ACCESS_FINE_LOCATION,
                 android.Manifest.permission.ACCESS_COARSE_LOCATION
             }, REQ_LOC);
         } else {
-            acquireNativeLocation();
+            acquireNativeLocation(false);
         }
 
         String entryUrl = "file:///android_asset/web/index.html";
@@ -537,68 +550,114 @@ public class MainActivity extends Activity {
         mWebView.loadUrl(entryUrl);
     }
 
-    private void acquireNativeLocation() {
+    private void recordAndEmitFix(double lat, double lon, float acc) {
+        if (lat == 0.0 && lon == 0.0) {
+            return;
+        }
+        mCachedLat = lat;
+        mCachedLon = lon;
+        mCachedAcc = acc;
+        mCachedTimeMs = System.currentTimeMillis();
+        mHasCachedFix = true;
+        dispatchJs("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + lat + "," + lon + "," + acc + ");");
+    }
+
+    private void stopPendingLocationUpdates(LocationManager lm) {
+        if (mHandler != null && mTimeoutRunnable != null) {
+            mHandler.removeCallbacks(mTimeoutRunnable);
+            mTimeoutRunnable = null;
+        }
+        if (mActiveLocationListener != null && lm != null) {
+            try {
+                lm.removeUpdates(mActiveLocationListener);
+            } catch (Exception ignored) {
+            }
+            mActiveLocationListener = null;
+        }
+    }
+
+    private Location pickBetterLocation(Location currentBest, Location candidate) {
+        if (candidate == null) return currentBest;
+        if (candidate.getLatitude() == 0.0 && candidate.getLongitude() == 0.0) return currentBest;
+        if (currentBest == null) return candidate;
+        long timeDelta = candidate.getTime() - currentBest.getTime();
+        if (timeDelta > 120000L) return candidate;
+        if (timeDelta < -120000L) return currentBest;
+        float accDiff = candidate.getAccuracy() - currentBest.getAccuracy();
+        if (accDiff < 0f) return candidate;
+        if (accDiff == 0f && timeDelta > 0L) return candidate;
+        return currentBest;
+    }
+
+    private void acquireNativeLocation(final boolean fromJs) {
         try {
+            final long nowMs = System.currentTimeMillis();
+            if (fromJs && mHasCachedFix && (nowMs - mCachedTimeMs) < 120000L) {
+                dispatchJs("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + mCachedLat + "," + mCachedLon + "," + mCachedAcc + ");");
+                return;
+            }
+
             if (!hasAnyLocationPermission()) {
-                requestPermissions(new String[]{
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                }, REQ_LOC);
+                if (!mPermissionRequestInFlight) {
+                    mPermissionRequestInFlight = true;
+                    requestPermissions(new String[]{
+                        android.Manifest.permission.ACCESS_FINE_LOCATION,
+                        android.Manifest.permission.ACCESS_COARSE_LOCATION
+                    }, REQ_LOC);
+                }
                 return;
             }
 
             final LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            Location loc = null;
-            boolean fineGranted = hasFinePermission();
+            final boolean fineGranted = hasFinePermission();
+            Location bestFreshLoc = null;
+            Location bestStaleCandidate = null;
+
             if (lm != null) {
+                java.util.List<String> scanProviders = new java.util.ArrayList<>();
+                if (Build.VERSION.SDK_INT >= 31) {
+                    scanProviders.add("fused");
+                }
                 if (fineGranted) {
-                    try {
-                        loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                    } catch (SecurityException ignored) {
-                    }
+                    scanProviders.add(LocationManager.GPS_PROVIDER);
                 }
-                if (loc == null) {
-                    try {
-                        loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-                    } catch (SecurityException ignored) {
-                    }
-                }
-                if (loc == null) {
-                    try {
-                        loc = lm.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER);
-                    } catch (SecurityException ignored) {
-                    }
-                }
-            }
+                scanProviders.add(LocationManager.NETWORK_PROVIDER);
+                scanProviders.add(LocationManager.PASSIVE_PROVIDER);
 
-            if (loc != null) {
-                final double lat = loc.getLatitude();
-                final double lon = loc.getLongitude();
-                final float acc = loc.getAccuracy();
-                dispatchJs("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + lat + "," + lon + "," + acc + ");");
-                return;
-            }
-
-            if (lm != null) {
-                if (mActiveLocationListener != null) {
+                for (String provider : scanProviders) {
                     try {
-                        lm.removeUpdates(mActiveLocationListener);
+                        Location cand = lm.getLastKnownLocation(provider);
+                        if (cand != null && !(cand.getLatitude() == 0.0 && cand.getLongitude() == 0.0)) {
+                            long ageMs = nowMs - cand.getTime();
+                            if (ageMs <= 900000L) {
+                                bestFreshLoc = pickBetterLocation(bestFreshLoc, cand);
+                            } else if (ageMs <= 43200000L) {
+                                bestStaleCandidate = pickBetterLocation(bestStaleCandidate, cand);
+                            }
+                        }
                     } catch (Exception ignored) {
                     }
                 }
+            }
+
+            if (bestFreshLoc != null) {
+                recordAndEmitFix(bestFreshLoc.getLatitude(), bestFreshLoc.getLongitude(), bestFreshLoc.getAccuracy());
+                return;
+            }
+
+            final Location staleBackup = bestStaleCandidate;
+
+            if (lm != null) {
+                stopPendingLocationUpdates(lm);
 
                 final LocationListener listener = new LocationListener() {
                     @Override
                     public void onLocationChanged(Location location) {
-                        final double lat = location.getLatitude();
-                        final double lon = location.getLongitude();
-                        final float acc = location.getAccuracy();
-                        try {
-                            lm.removeUpdates(this);
-                        } catch (Exception ignored) {
+                        if (location == null || (location.getLatitude() == 0.0 && location.getLongitude() == 0.0)) {
+                            return;
                         }
-                        mActiveLocationListener = null;
-                        dispatchJs("if(window.__onNativeGpsSuccess) window.__onNativeGpsSuccess(" + lat + "," + lon + "," + acc + ");");
+                        stopPendingLocationUpdates(lm);
+                        recordAndEmitFix(location.getLatitude(), location.getLongitude(), location.getAccuracy());
                     }
                     @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
                     @Override public void onProviderEnabled(String provider) {}
@@ -606,34 +665,52 @@ public class MainActivity extends Activity {
                 };
                 mActiveLocationListener = listener;
 
-                String chosenProvider = null;
-                if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                    chosenProvider = LocationManager.NETWORK_PROVIDER;
-                } else if (fineGranted && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                    chosenProvider = LocationManager.GPS_PROVIDER;
-                } else if (lm.isProviderEnabled(LocationManager.PASSIVE_PROVIDER)) {
-                    chosenProvider = LocationManager.PASSIVE_PROVIDER;
+                int subscribedCount = 0;
+                java.util.List<String> activeProviders = new java.util.ArrayList<>();
+                if (Build.VERSION.SDK_INT >= 31) {
+                    activeProviders.add("fused");
+                }
+                activeProviders.add(LocationManager.NETWORK_PROVIDER);
+                if (fineGranted) {
+                    activeProviders.add(LocationManager.GPS_PROVIDER);
+                }
+                activeProviders.add(LocationManager.PASSIVE_PROVIDER);
+
+                for (String provider : activeProviders) {
+                    try {
+                        if (lm.isProviderEnabled(provider)) {
+                            lm.requestLocationUpdates(provider, 0L, 0f, listener, getMainLooper());
+                            subscribedCount++;
+                        }
+                    } catch (Exception ignored) {
+                    }
                 }
 
-                if (chosenProvider != null) {
-                    lm.requestLocationUpdates(chosenProvider, 0L, 0f, listener, getMainLooper());
+                if (subscribedCount > 0) {
                     if (mHandler != null) {
-                        mHandler.postDelayed(new Runnable() {
+                        mTimeoutRunnable = new Runnable() {
                             @Override
                             public void run() {
                                 if (mActiveLocationListener == listener) {
-                                    try {
-                                        lm.removeUpdates(listener);
-                                    } catch (Exception ignored) {
+                                    stopPendingLocationUpdates(lm);
+                                    if (staleBackup != null) {
+                                        recordAndEmitFix(staleBackup.getLatitude(), staleBackup.getLongitude(), staleBackup.getAccuracy());
+                                    } else {
+                                        dispatchJs("if(window.__onNativeGpsError) window.__onNativeGpsError('Native GPS timed out; switching to network geolocation.');");
                                     }
-                                    mActiveLocationListener = null;
                                 }
                             }
-                        }, 9000);
+                        };
+                        mHandler.postDelayed(mTimeoutRunnable, 6500L);
                     }
+                } else if (staleBackup != null) {
+                    recordAndEmitFix(staleBackup.getLatitude(), staleBackup.getLongitude(), staleBackup.getAccuracy());
                 } else {
+                    mActiveLocationListener = null;
                     dispatchJs("if(window.__onNativeGpsError) window.__onNativeGpsError('Location sensors disabled in device settings.');");
                 }
+            } else {
+                dispatchJs("if(window.__onNativeGpsError) window.__onNativeGpsError('Location service unavailable on device.');");
             }
         } catch (Exception e) {
             final String safeErr = org.json.JSONObject.quote(e.getMessage() != null ? e.getMessage() : "Location acquisition error");
@@ -645,6 +722,7 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_LOC) {
+            mPermissionRequestInFlight = false;
             boolean grantedAny = false;
             if (grantResults != null) {
                 for (int r : grantResults) {
@@ -654,8 +732,9 @@ public class MainActivity extends Activity {
                     }
                 }
             }
+            dispatchJs("if(window.__onNativeGpsPermissionResult) window.__onNativeGpsPermissionResult(" + (grantedAny ? "true" : "false") + ");");
             if (grantedAny) {
-                acquireNativeLocation();
+                acquireNativeLocation(true);
             } else {
                 dispatchJs("if(window.__onNativeGpsError) window.__onNativeGpsError('Location permission was not granted.');");
             }
@@ -664,16 +743,12 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (mActiveLocationListener != null) {
-            try {
-                LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-                if (lm != null) {
-                    lm.removeUpdates(mActiveLocationListener);
-                }
-            } catch (Exception ignored) {
-            }
-            mActiveLocationListener = null;
+        LocationManager lm = null;
+        try {
+            lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        } catch (Exception ignored) {
         }
+        stopPendingLocationUpdates(lm);
         if (mAssetServer != null) {
             mAssetServer.stop();
             mAssetServer = null;
@@ -826,8 +901,8 @@ def build_wearos_apk():
         manifest = """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ai.heatshield.wear"
-    android:versionCode="205"
-    android:versionName="2.0.5">
+    android:versionCode="206"
+    android:versionName="2.0.6">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -1218,7 +1293,7 @@ fi
 """
 
     readme = """# HeatShield AI — Desktop Standalone Command Center
-## Version 2.0.5 (Windows, macOS, Linux)
+## Version 2.0.6 (Windows, macOS, Linux)
 
 ### Instant 1-Click Launch:
 1. **Extract ALL files** from this ZIP archive first (do not launch inside ZIP preview).
@@ -1267,7 +1342,7 @@ def build_master_offline_suite():
     print(f"\n[*] Building Master Offline Research Suite: {zip_path}...")
     
     readme = """# HeatShield AI — Complete Master Offline Research Suite
-Version 2.0.5 | SIH26083
+Version 2.0.6 | SIH26083
 
 This archive contains the entire standalone offline ecosystem:
 - Full Python Machine Learning Pipeline (K-Means, GMM, PCA, UMAP, Isolation Forest, Markov Transition Matrix).
@@ -1316,7 +1391,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(apk)}",
                 "sizeBytes": os.path.getsize(apk),
                 "sizeFormatted": _format_size(apk),
-                "version": "2.0.5",
+                "version": "2.0.6",
                 "sha256": generate_checksum(apk),
                 "format": "APK (Native Signed Package)",
                 "compatibility": "Android 7.0 to 15 (Universal ARM64, ARMv7, x86_64)"
@@ -1326,7 +1401,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(ios)}",
                 "sizeBytes": os.path.getsize(ios),
                 "sizeFormatted": _format_size(ios),
-                "version": "2.0.5",
+                "version": "2.0.6",
                 "sha256": generate_checksum(ios),
                 "format": "Apple Configuration Profile (.mobileconfig)",
                 "compatibility": "iOS 15.0+, iPadOS 15.0+, macOS Monterey+"
@@ -1336,7 +1411,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(wear)}",
                 "sizeBytes": os.path.getsize(wear),
                 "sizeFormatted": _format_size(wear),
-                "version": "2.0.5",
+                "version": "2.0.6",
                 "sha256": generate_checksum(wear),
                 "format": "Wear OS Native Signed APK",
                 "compatibility": "Wear OS 3.0+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3"
@@ -1346,7 +1421,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(desktop)}",
                 "sizeBytes": os.path.getsize(desktop),
                 "sizeFormatted": _format_size(desktop),
-                "version": "2.0.5",
+                "version": "2.0.6",
                 "sha256": generate_checksum(desktop),
                 "format": "Windows / macOS Portable (.zip)",
                 "compatibility": "Windows 10/11, macOS 12+, Linux x86_64"
@@ -1356,7 +1431,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(master)}",
                 "sizeBytes": os.path.getsize(master),
                 "sizeFormatted": _format_size(master),
-                "version": "2.0.5",
+                "version": "2.0.6",
                 "sha256": generate_checksum(master),
                 "format": "Full Master Research Package (.zip)",
                 "compatibility": "All Platforms (Universal Offline Bundle)"

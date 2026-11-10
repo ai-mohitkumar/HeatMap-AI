@@ -11,6 +11,7 @@ interface MobileHeaderProps {
   hasUnreadAlerts?: boolean;
   locationSource?: LocationSourceType;
   locationUnavailable?: boolean;
+  locationAcquiring?: boolean;
 }
 
 export const MobileHeader: React.FC<MobileHeaderProps> = ({
@@ -20,10 +21,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   onOpenDrawer,
   hasUnreadAlerts = true,
   locationSource,
-  locationUnavailable = false
+  locationUnavailable = false,
+  locationAcquiring = false
 }) => {
   const shortLocation = locationUnavailable
     ? 'Select Location'
+    : locationAcquiring && locationSource === 'unavailable'
+    ? 'Locating...'
     : locationName.replace(/, India$/, ', IN').replace(/ Station$/, '');
 
   return (

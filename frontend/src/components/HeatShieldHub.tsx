@@ -143,6 +143,7 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
     propLocationUnavailable !== undefined
       ? propLocationUnavailable
       : !hasVerifiedCoords && !locationAcquiring;
+  const readingsPaused = locationUnavailable || !hasVerifiedCoords;
 
   const locationName =
     propLocationName ||
@@ -435,13 +436,17 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 }`}>
                   <Flame className="w-3.5 h-3.5" />
                   <span>
-                    {locationUnavailable ? 'Location Required' : locationAcquiring ? 'Locating...' : `${riskLevel} Heat Risk`}
+                    {locationUnavailable
+                      ? 'Location Required'
+                      : locationAcquiring && !hasVerifiedCoords
+                      ? 'Locating...'
+                      : `${riskLevel} Heat Risk`}
                   </span>
                 </span>
                 <span className="text-xs font-semibold text-slate-300">
                   in <strong className="text-white">{locationName}</strong>
                 </span>
-                {!locationUnavailable && (
+                {!locationUnavailable && hasVerifiedCoords && (
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                       locationSource === 'ip_geolocation' || locationSource === 'network_cellular' || reverseSource === 'local_centroid_fallback'
@@ -450,6 +455,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                     }`}
                   >
                     {formatLocationConfidence(locationSource, accuracyM).shortTag}
+                  </span>
+                )}
+                {locationAcquiring && hasVerifiedCoords && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/35 animate-pulse">
+                    Refining GPS...
                   </span>
                 )}
               </div>
@@ -466,6 +476,10 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               {locationUnavailable ? (
                 <h2 className="text-xl sm:text-2xl font-black text-slate-300 tracking-tight">
                   Live Heat Reading Paused — Select Your Location
+                </h2>
+              ) : !hasVerifiedCoords && locationAcquiring ? (
+                <h2 className="text-xl sm:text-2xl font-black text-cyan-200 tracking-tight">
+                  Acquiring Live GPS / IP Location &amp; Weather...
                 </h2>
               ) : (
                 <h2 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight flex flex-wrap items-baseline gap-2">
@@ -558,16 +572,18 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 block">
                   {locationUnavailable
                     ? 'Location Required'
+                    : readingsPaused
+                    ? 'Acquiring Location...'
                     : isLiveWeather
                     ? `Live • ${weatherProvider || 'Open-Meteo'}${formattedObservedTime ? ` • ${formattedObservedTime}` : ''}`
                     : 'Offline IDW Estimate • NOAA Baseline'}
                 </span>
                 <div className="flex items-baseline gap-2 mt-0.5">
                   <span className="text-3xl sm:text-4xl font-black text-white">
-                    {locationUnavailable ? '--°C' : `${tempC}°C`}
+                    {readingsPaused ? '--°C' : `${tempC}°C`}
                   </span>
                   <span className="text-xs font-bold text-amber-300/90 font-mono">
-                    HI: {locationUnavailable ? '--°C' : `${feelsLikeC}°C`}
+                    HI: {readingsPaused ? '--°C' : `${feelsLikeC}°C`}
                   </span>
                 </div>
               </div>
@@ -579,7 +595,7 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             {/* Clear Risk Status Badge */}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                locationUnavailable
+                readingsPaused
                   ? 'bg-slate-800 text-slate-300 border-slate-700'
                   : riskLevel === 'Extreme'
                   ? 'bg-rose-950/60 text-rose-300 border-rose-500/40'
@@ -590,7 +606,13 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                   : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/40'
               }`}>
                 <Shield className="w-3 h-3" />
-                <span>{locationUnavailable ? 'Awaiting Location' : `Status: ${riskLevel} Thermal Load`}</span>
+                <span>
+                  {locationUnavailable
+                    ? 'Awaiting Location'
+                    : readingsPaused
+                    ? 'Locating Coordinates...'
+                    : `Status: ${riskLevel} Thermal Load`}
+                </span>
               </span>
             </div>
 
@@ -599,6 +621,8 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               💡 <strong className="text-white font-semibold">Action:</strong>{' '}
               {locationUnavailable
                 ? 'Select a location to enable local weather and heat safety guidance.'
+                : readingsPaused
+                ? 'Determining GPS / IP coordinates to fetch real-time thermal risk...'
                 : feelsLikeC >= 42
                 ? 'High danger of cutaneous sweat evaporation failure. Drink water immediately and rest in shade.'
                 : feelsLikeC >= 36
@@ -612,24 +636,24 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block">Humidity</span>
               <span className="font-bold text-cyan-400 flex items-center justify-center gap-1">
-                <Droplets className="w-3 h-3" /> {locationUnavailable ? '--' : `${humidity}%`}
+                <Droplets className="w-3 h-3" /> {readingsPaused ? '--' : `${humidity}%`}
               </span>
             </div>
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block">Wind Flow</span>
               <span className="font-bold text-slate-200 flex items-center justify-center gap-1">
-                <Wind className="w-3 h-3" /> {locationUnavailable ? '--' : `${windKmh} km/h`}
+                <Wind className="w-3 h-3" /> {readingsPaused ? '--' : `${windKmh} km/h`}
               </span>
             </div>
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
               <span className="text-[10px] text-slate-400 block">Feed</span>
               <span
                 className={`font-bold flex items-center justify-center gap-1 ${
-                  locationUnavailable ? 'text-slate-400' : isLiveWeather ? 'text-emerald-400' : 'text-amber-400'
+                  readingsPaused ? 'text-slate-400' : isLiveWeather ? 'text-emerald-400' : 'text-amber-400'
                 }`}
                 title={weatherFallbackReason || undefined}
               >
-                {locationUnavailable ? 'Paused' : isLiveWeather ? 'Live' : 'Offline'}
+                {locationUnavailable ? 'Paused' : readingsPaused ? 'Syncing' : isLiveWeather ? 'Live' : 'Offline'}
               </span>
             </div>
             <div className="bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/80">
@@ -637,6 +661,8 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               <span className="font-bold text-cyan-300 flex items-center justify-center gap-1 truncate">
                 {locationUnavailable
                   ? 'None'
+                  : readingsPaused
+                  ? 'GPS...'
                   : accuracyM != null
                   ? `±${Math.round(accuracyM)}m`
                   : locationSource === 'manual'
@@ -676,21 +702,21 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400">Tier 1 • Primary Hazard</span>
                 <span
                   className={`text-[10px] px-2 py-0.2 rounded font-bold ${
-                    locationUnavailable
+                    readingsPaused
                       ? 'bg-slate-700 text-slate-300'
                       : isLiveWeather
                       ? 'bg-emerald-500/20 text-emerald-300'
                       : 'bg-amber-500/20 text-amber-300'
                   }`}
                 >
-                  {locationUnavailable ? 'Paused' : isLiveWeather ? 'Live' : 'Offline IDW'}
+                  {locationUnavailable ? 'Paused' : readingsPaused ? 'Locating' : isLiveWeather ? 'Live' : 'Offline IDW'}
                 </span>
               </div>
               <div className="text-xl font-black text-white mt-0.5 truncate">
-                {locationUnavailable ? 'Unavailable' : `${riskLevel} Risk`}
+                {locationUnavailable ? 'Unavailable' : readingsPaused ? 'Acquiring...' : `${riskLevel} Risk`}
               </div>
               <p className="text-xs text-slate-300 truncate">
-                {locationUnavailable ? 'Select location to calculate heat risk' : 'Rothfusz & NOAA Baseline Assessment'}
+                {readingsPaused ? 'Waiting for live coordinates' : 'Rothfusz & NOAA Baseline Assessment'}
               </p>
             </div>
           </div>
@@ -704,11 +730,11 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold tracking-wider text-rose-400">Tier 1 • Heat Index</span>
                 <span className="text-[10px] font-semibold text-emerald-400">
-                  {locationUnavailable ? 'N/A' : isLiveWeather ? 'Observed' : 'Estimated'}
+                  {readingsPaused ? 'Pending' : isLiveWeather ? 'Observed' : 'Estimated'}
                 </span>
               </div>
               <div className="text-xl font-black text-white mt-0.5 font-mono">
-                {locationUnavailable ? '--°C' : `${heatIndexC}°C HI`}
+                {readingsPaused ? '--°C' : `${heatIndexC}°C HI`}
               </div>
               <p className="text-xs text-slate-300 truncate">Rothfusz Biometeorological Model</p>
             </div>
@@ -721,10 +747,10 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               <Sun className="w-3.5 h-3.5 text-amber-400" />
             </div>
             <div className="my-1">
-              <span className="text-lg font-black text-white">{locationUnavailable ? '--°C' : `${tempC}°C`}</span>
+              <span className="text-lg font-black text-white">{readingsPaused ? '--°C' : `${tempC}°C`}</span>
             </div>
             <span className="text-[10px] text-slate-400 truncate">
-              {locationUnavailable ? 'No coordinates' : `Daily Peak: ~${Math.round((tempC + 2) * 10) / 10}°C`}
+              {readingsPaused ? 'Locating...' : `Daily Peak: ~${Math.round((tempC + 2) * 10) / 10}°C`}
             </span>
           </div>
 
@@ -734,10 +760,10 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
               <Droplets className="w-3.5 h-3.5 text-cyan-400" />
             </div>
             <div className="my-1">
-              <span className="text-lg font-black text-white">{locationUnavailable ? '--%' : `${humidity}%`}</span>
+              <span className="text-lg font-black text-white">{readingsPaused ? '--%' : `${humidity}%`}</span>
             </div>
             <span className="text-[10px] text-slate-400 truncate">
-              {locationUnavailable ? 'No coordinates' : humidity >= 60 ? 'Moisture Trap' : 'Normal Vapor'}
+              {readingsPaused ? 'Locating...' : humidity >= 60 ? 'Moisture Trap' : 'Normal Vapor'}
             </span>
           </div>
 
@@ -793,14 +819,26 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 <span className="text-sm font-mono font-bold text-white">
                   {currentLat != null && currentLon != null
                     ? `${currentLat.toFixed(4)}° N, ${currentLon.toFixed(4)}° E`
+                    : locationAcquiring
+                    ? 'Acquiring coordinates...'
                     : 'Coordinates unavailable'}
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
-                  {formatLocationConfidence(locationSource, accuracyM).shortTag}
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
+                  {currentLat != null && currentLon != null
+                    ? formatLocationConfidence(locationSource, accuracyM).shortTag
+                    : locationAcquiring
+                    ? 'Locating...'
+                    : 'Unavailable'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-1">
-                NOAA GSOD Baseline (IDW k=4) • Place lookup: {reverseSource}
+                {currentLat != null && currentLon != null
+                  ? `NOAA GSOD Baseline (IDW k=4) • Place lookup: ${reverseSource}${
+                      locationAcquiring ? ' • Refining GPS...' : ''
+                    }`
+                  : locationAcquiring
+                  ? 'Polling GPS sensors and network IP geolocation...'
+                  : 'Select a location or retry GPS tracking'}
               </p>
               {gpsMessage && (
                 <div className="mt-2 text-[10px] text-emerald-400 bg-emerald-950/40 p-1.5 rounded-lg border border-emerald-800/60 flex items-center gap-1.5">
@@ -995,19 +1033,32 @@ export const HeatShieldHub: React.FC<HeatShieldHubProps> = ({
                 })}
 
                 {/* Active Station / Verified User Pin Tooltip Badge (omitted when unavailable) */}
-                {activeCoords && !locationUnavailable && (
-                  <g transform={`translate(${activeCoords.x}, ${activeCoords.y})`}>
-                    <circle cx="0" cy="0" r="5" fill="#2563EB" stroke="#FFFFFF" strokeWidth="1.5" />
-                    <rect x="8" y="-18" width="136" height="30" rx="6" fill="#0B132B" stroke="#3B82F6" strokeWidth="1" />
-                    <text x="16" y="-3" fill="#FFFFFF" fontSize="9.5" fontWeight="bold">
-                      {locationName.split(',')[0].slice(0, 18)}
-                    </text>
-                    <text x="16" y="8" fill="#FBBF24" fontSize="9" fontWeight="medium">
-                      {riskLevel} ({tempC}°C)
-                    </text>
-                  </g>
-                )}
+                {activeCoords && !locationUnavailable && (() => {
+                  const tipOnLeft = activeCoords.x > 220;
+                  const rectX = tipOnLeft ? -144 : 8;
+                  const textX = tipOnLeft ? -136 : 16;
+                  return (
+                    <g transform={`translate(${activeCoords.x}, ${activeCoords.y})`}>
+                      <circle cx="0" cy="0" r="10" fill="#3B82F6" opacity="0.35" className="animate-pulse" />
+                      <circle cx="0" cy="0" r="5" fill="#2563EB" stroke="#FFFFFF" strokeWidth="1.5" />
+                      <rect x={rectX} y="-18" width="136" height="30" rx="6" fill="#0B132B" stroke="#3B82F6" strokeWidth="1" />
+                      <text x={textX} y="-3" fill="#FFFFFF" fontSize="9.5" fontWeight="bold">
+                        {locationName.split(',')[0].slice(0, 18)}
+                      </text>
+                      <text x={textX} y="8" fill="#FBBF24" fontSize="9" fontWeight="medium">
+                        {riskLevel} ({tempC}°C)
+                      </text>
+                    </g>
+                  );
+                })()}
               </svg>
+
+              {!activeCoords && locationAcquiring && (
+                <div className="absolute top-3 left-3 px-2.5 py-1 rounded-lg bg-[#0B132B]/90 border border-cyan-500/40 text-[11px] font-semibold text-cyan-200 flex items-center gap-1.5 shadow z-20">
+                  <Radio className="w-3 h-3 text-cyan-400 animate-ping" />
+                  <span>Acquiring live pin...</span>
+                </div>
+              )}
 
               {/* Hover Tooltip Overlay */}
               {hoveredStation && (

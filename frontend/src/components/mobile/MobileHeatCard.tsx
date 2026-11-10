@@ -58,7 +58,7 @@ export const MobileHeatCard: React.FC<MobileHeatCardProps> = ({
   const confidence = formatLocationConfidence(locationSource, accuracyM);
   const obsTimeText = formatObservedTime(observedAt);
 
-  if (locationAcquiring) {
+  if (locationAcquiring && locationSource === 'unavailable') {
     return (
       <div className="rounded-3xl bg-gradient-to-b from-[#131E3A] to-[#0D152D] border border-slate-700/80 p-6 shadow-2xl space-y-4">
         <div className="flex items-center gap-2 text-xs font-bold text-blue-300">
@@ -176,16 +176,23 @@ export const MobileHeatCard: React.FC<MobileHeatCardProps> = ({
           <ChevronRight className="w-3.5 h-3.5 text-slate-400 group-hover:translate-x-0.5 transition shrink-0" />
         </button>
 
-        <span
-          title={confidence.detail}
-          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
-            confidence.isApproximate
-              ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
-              : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
-          }`}
-        >
-          {confidence.shortTag}
-        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {locationAcquiring && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 animate-pulse">
+              Refining GPS
+            </span>
+          )}
+          <span
+            title={confidence.detail}
+            className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
+              confidence.isApproximate
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+            }`}
+          >
+            {confidence.shortTag}
+          </span>
+        </div>
       </div>
 
       {/* Center Main Stage: Weather Icon & Huge Temperature */}

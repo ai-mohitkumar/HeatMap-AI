@@ -20,6 +20,7 @@ interface MobileIDWCardProps {
   locationSource?: LocationSourceType;
   reverseSource?: ReverseGeocodeSource;
   locationUnavailable?: boolean;
+  locationAcquiring?: boolean;
   contributingStations: StationInfluenceItem[];
   onTrackMove: () => void;
   isTracking?: boolean;
@@ -34,6 +35,7 @@ export const MobileIDWCard: React.FC<MobileIDWCardProps> = ({
   locationSource = 'hardware_gps',
   reverseSource,
   locationUnavailable = false,
+  locationAcquiring = false,
   contributingStations,
   onTrackMove,
   isTracking = false,
@@ -61,13 +63,19 @@ export const MobileIDWCard: React.FC<MobileIDWCardProps> = ({
           <div className="text-sm font-mono font-bold text-white mt-1">
             {hasCoords
               ? `${currentLat!.toFixed(5)}° N, ${currentLon!.toFixed(5)}° E`
+              : locationAcquiring
+              ? 'Acquiring coordinates...'
               : 'Coordinates Unavailable'}
           </div>
           <span className="inline-block mt-0.5 text-[10px] text-slate-400 font-medium">
             {hasCoords
               ? `${confidence.label} (${confidence.accuracyLabel})${
+                  locationAcquiring ? ' • Refining GPS...' : ''
+                }${
                   reverseSource === 'local_centroid_fallback' ? ' • Offline Nearest District Name' : ''
                 }`
+              : locationAcquiring
+              ? 'Checking GPS sensors & network IP...'
               : 'Tap Track GPS or pick a location manually'}
           </span>
         </div>

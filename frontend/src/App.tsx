@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from './services/api';
 import type {
   DatasetSummary,
@@ -525,8 +525,10 @@ export function App() {
 
   const [isTrackingGps, setIsTrackingGps] = useState<boolean>(false);
   const [gpsStatusMessage, setGpsStatusMessage] = useState<string | null>(null);
+  const locationReqSeqRef = useRef<number>(0);
 
   const handleSelectStationManual = (stId: string) => {
+    locationReqSeqRef.current += 1;
     setSelectedSafetyStationId(stId);
     const st = OFFLINE_STATIONS.find((s) => s.station_id === stId);
     if (st) {
@@ -544,6 +546,7 @@ export function App() {
       setLocationState(stationLoc);
       saveManualLocation(manualPayload);
       setLocationAcquiring(false);
+      setIsTrackingGps(false);
     }
   };
 
@@ -554,21 +557,42 @@ export function App() {
     district?: string;
     state?: string;
   }) => {
+    locationReqSeqRef.current += 1;
     const manual = createManualLocationResult(loc);
     setLocationState(manual);
     saveManualLocation(loc);
     setLocationAcquiring(false);
+    setIsTrackingGps(false);
   };
 
   const handleTrackMove = async () => {
+    const reqSeq = ++locationReqSeqRef.current;
     clearManualLocation();
     setLocationAcquiring(true);
     setIsTrackingGps(true);
     setGpsStatusMessage('Acquiring verified location fix...');
     try {
-      const loc = await acquireBestLocation((status) => {
-        setGpsStatusMessage(status);
-      });
+      const loc = await acquireBestLocation(
+        (status) => {
+          if (locationReqSeqRef.current === reqSeq) {
+            setGpsStatusMessage(status);
+          }
+        },
+        (preliminaryLoc) => {
+          if (locationReqSeqRef.current !== reqSeq) return;
+          setLocationState((prev) => {
+            if (
+              prev &&
+              prev.status === 'resolved' &&
+              (prev.source === 'hardware_gps' || prev.source === 'native_android')
+            ) {
+              return prev;
+            }
+            return preliminaryLoc;
+          });
+        }
+      );
+      if (locationReqSeqRef.current !== reqSeq) return;
       setLocationState(loc);
       if (loc.status === 'resolved') {
         setGpsStatusMessage(
@@ -579,14 +603,25 @@ export function App() {
       } else {
         setGpsStatusMessage(loc.errorReason || 'Location unavailable — please select your city manually.');
       }
-      setTimeout(() => setGpsStatusMessage(null), 5000);
+      setTimeout(() => {
+        if (locationReqSeqRef.current === reqSeq) {
+          setGpsStatusMessage(null);
+        }
+      }, 5000);
     } catch (err) {
+      if (locationReqSeqRef.current !== reqSeq) return;
       console.warn('[GPS] Error acquiring location:', err);
       setGpsStatusMessage('Location sensor unavailable. Please select a city manually.');
-      setTimeout(() => setGpsStatusMessage(null), 5000);
+      setTimeout(() => {
+        if (locationReqSeqRef.current === reqSeq) {
+          setGpsStatusMessage(null);
+        }
+      }, 5000);
     } finally {
-      setLocationAcquiring(false);
-      setIsTrackingGps(false);
+      if (locationReqSeqRef.current === reqSeq) {
+        setLocationAcquiring(false);
+        setIsTrackingGps(false);
+      }
     }
   };
 
@@ -755,6 +790,14 @@ export function App() {
           setAppMode('safety');
         }}
         onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
+        locationName={locationName}
+        locationSource={locationSource}
+        locationAcquiring={locationAcquiring}
+        locationUnavailable={locationUnavailable}
+        accuracyM={gpsAccuracy}
+        isTracking={isTrackingGps}
+        onTrackMove={handleTrackMove}
+        onOpenLocationPicker={() => setIsDesktopLocationModalOpen(true)}
       />
 
       {/* Body with Left Sidebar Rail and Main Workspace */}
@@ -852,6 +895,15 @@ export function App() {
                 locationName={locationName}
                 heatIndexC={feelsLikeC}
                 riskLevel={riskLevel}
+                accuracyM={gpsAccuracy}
+                locationSource={locationSource}
+                reverseSource={reverseSource}
+                locationAcquiring={locationAcquiring}
+                locationUnavailable={locationUnavailable}
+                locationErrorReason={locationErrorReason}
+                isTracking={isTrackingGps}
+                onTrackMove={handleTrackMove}
+                onOpenLocationPicker={() => setIsDesktopLocationModalOpen(true)}
               />
             </div>
           )}
@@ -1112,6 +1164,15 @@ export function App() {
                 locationName={locationName}
                 heatIndexC={feelsLikeC}
                 riskLevel={riskLevel}
+                accuracyM={gpsAccuracy}
+                locationSource={locationSource}
+                reverseSource={reverseSource}
+                locationAcquiring={locationAcquiring}
+                locationUnavailable={locationUnavailable}
+                locationErrorReason={locationErrorReason}
+                isTracking={isTrackingGps}
+                onTrackMove={handleTrackMove}
+                onOpenLocationPicker={() => setIsDesktopLocationModalOpen(true)}
               />
 
                     {/* 8. Temporal Profile Transitions */}
@@ -1231,6 +1292,15 @@ export function App() {
                   locationName={locationName}
                   heatIndexC={feelsLikeC}
                   riskLevel={riskLevel}
+                  accuracyM={gpsAccuracy}
+                  locationSource={locationSource}
+                  reverseSource={reverseSource}
+                  locationAcquiring={locationAcquiring}
+                  locationUnavailable={locationUnavailable}
+                  locationErrorReason={locationErrorReason}
+                  isTracking={isTrackingGps}
+                  onTrackMove={handleTrackMove}
+                  onOpenLocationPicker={() => setIsDesktopLocationModalOpen(true)}
                 />
               )}
               {activeTab === 'profiles' && <VulnerabilityProfilesView profiles={profiles} />}

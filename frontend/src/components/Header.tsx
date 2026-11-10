@@ -16,7 +16,10 @@ import {
   Globe,
   Bell,
   AlertOctagon,
-  Sparkles
+  Sparkles,
+  LocateFixed,
+  AlertTriangle,
+  ChevronDown
 } from 'lucide-react';
 
 import { OFFLINE_STATIONS } from '../utils/offlineEngine';
@@ -29,9 +32,10 @@ import {
 import { HeatShieldLogo } from './shared/HeatShieldLogo';
 import { notificationService } from '../utils/notificationService';
 import { getTranslation } from '../utils/localization';
-import type { LanguageCode } from '../types';
+import type { LanguageCode, LocationSourceType } from '../types';
 import { BrightnessModal } from './shared/BrightnessModal';
 import { useBrightness } from '../utils/useBrightness';
+import { formatLocationConfidence } from '../utils/geolocationService';
 
 interface HeaderProps {
   activeK: number;
@@ -56,6 +60,14 @@ interface HeaderProps {
   onSelectLocation?: (loc: { name: string; lat: number; lon: number; district?: string; state?: string }) => void;
   onOpenVillageExplorer?: (stateCode?: string, districtName?: string, villageName?: string) => void;
   onToggleMobileMenu?: () => void;
+  locationName?: string;
+  locationSource?: LocationSourceType;
+  locationAcquiring?: boolean;
+  locationUnavailable?: boolean;
+  accuracyM?: number | null;
+  isTracking?: boolean;
+  onTrackMove?: () => void;
+  onOpenLocationPicker?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -75,7 +87,15 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectStation,
   onSelectLocation,
   onOpenVillageExplorer,
-  onToggleMobileMenu
+  onToggleMobileMenu,
+  locationName,
+  locationSource = 'unavailable',
+  locationAcquiring = false,
+  locationUnavailable = false,
+  accuracyM = null,
+  isTracking = false,
+  onTrackMove,
+  onOpenLocationPicker
 }) => {
   const [internalQuery, setInternalQuery] = React.useState(searchQuery);
   const [isDropdownOpen, setIsDropdownOpen] = React.useState(false);
@@ -197,9 +217,21 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   const hasAnyResults = matchingStations.length > 0 || matchingGeoLocations.length > 0;
+  const hasResolvedDisplay =
+    Boolean(locationName) &&
+    locationName !== 'Acquiring location...' &&
+    locationName !== 'Location Unavailable' &&
+    locationSource !== 'unavailable';
+  const shortLocationLabel = hasResolvedDisplay
+    ? (locationName || '').replace(/, India$/i, ', IN').replace(/ \((?:Approx\. IP|Offline Area)\)/g, '')
+    : locationAcquiring
+    ? 'Locating...'
+    : 'Select Location';
+  const locationConfidence = formatLocationConfidence(locationSource, accuracyM);
+
   return (
-    <header className="bg-[#0B132B] text-white border-b border-slate-800/80 sticky top-0 z-50 shadow-md w-full max-w-full overflow-x-hidden">
-      <div className="w-full max-w-full px-3 sm:px-4 lg:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4 overflow-x-hidden">
+    <header className="bg-[#0B132B] text-white border-b border-slate-800/80 sticky top-0 z-50 shadow-md w-full max-w-full overflow-x-clip">
+      <div className="w-full max-w-full px-3 sm:px-4 lg:px-5 py-2.5 flex items-center justify-between gap-2 sm:gap-3">
         
         {/* Left: Brand Emblem & Logo with Mobile Hamburger Button */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -216,9 +248,10 @@ export const Header: React.FC<HeaderProps> = ({
           <HeatShieldLogo size="md" showTagline={true} />
         </div>
 
-        {/* Center-Left: Search Bar with Autocomplete Dropdown */}
-        <div ref={searchContainerRef} className="relative hidden md:flex items-center w-48 lg:w-60 xl:w-72 shrink min-w-0">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
+        {/* Center-Left: Search Bar + Live Location Pill */}
+        <div className="hidden md:flex items-center gap-1.5 min-w-0">
+          <div ref={searchContainerRef} className="relative flex items-center w-36 lg:w-32 xl:w-48 2xl:w-64 shrink min-w-0">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 xl:left-3 pointer-events-none" />
           <input
             ref={searchInputRef}
             type="text"
@@ -240,20 +273,20 @@ export const Header: React.FC<HeaderProps> = ({
               }
             }}
             placeholder="Search village, district, state or station..."
-            className="w-full bg-[#131E3A] border border-slate-700/70 rounded-xl pl-9 pr-14 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition shadow-inner"
+            className="w-full bg-[#131E3A] border border-slate-700/70 rounded-xl pl-8 xl:pl-9 pr-7 xl:pr-14 py-1.5 text-xs text-slate-200 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition shadow-inner"
           />
 
           {currentQuery ? (
             <button
               onClick={() => handleQueryChange('')}
-              className="absolute right-8 text-slate-400 hover:text-white p-0.5"
+              className="absolute right-2 xl:right-8 text-slate-400 hover:text-white p-0.5"
               title="Clear search"
             >
               <X className="w-3 h-3" />
             </button>
           ) : null}
 
-          <kbd className="absolute right-2.5 px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/80 rounded border border-slate-700 pointer-events-none select-none">
+          <kbd className="hidden xl:inline-block absolute right-2.5 px-1.5 py-0.5 text-[9px] font-mono text-slate-400 bg-slate-800/80 rounded border border-slate-700 pointer-events-none select-none">
             Ctrl K
           </kbd>
 
@@ -446,6 +479,77 @@ export const Header: React.FC<HeaderProps> = ({
 
             </div>
           )}
+          </div>
+
+          {/* Live Location Status Pill & Quick GPS Trigger */}
+          {(onOpenLocationPicker || onTrackMove) && (
+            <div className="flex items-center gap-1 shrink-0">
+              {onOpenLocationPicker && (
+                <button
+                  type="button"
+                  onClick={onOpenLocationPicker}
+                  title={
+                    hasResolvedDisplay
+                      ? `${locationName} (${locationConfidence.detail}) — Click to change location`
+                      : locationAcquiring
+                      ? 'Acquiring live GPS / network location — Click to pick manually'
+                      : 'Location unavailable — Click to select city or village'
+                  }
+                  className={`flex items-center gap-1.5 px-2 xl:px-2.5 py-1.5 rounded-xl border text-xs font-semibold transition max-w-[116px] xl:max-w-[170px] ${
+                    locationUnavailable && !hasResolvedDisplay
+                      ? 'bg-amber-950/60 hover:bg-amber-900/60 border-amber-500/50 text-amber-200'
+                      : 'bg-[#131E3A] hover:bg-slate-800 border-slate-700/80 text-slate-100'
+                  }`}
+                >
+                  {locationUnavailable && !hasResolvedDisplay ? (
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  ) : (
+                    <MapPin
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        locationAcquiring && !hasResolvedDisplay
+                          ? 'text-cyan-400 animate-pulse'
+                          : 'text-rose-400'
+                      }`}
+                    />
+                  )}
+                  <span className="truncate text-[11px] font-bold">{shortLocationLabel}</span>
+                  {hasResolvedDisplay && (
+                    <span
+                      className={`hidden xl:inline-block px-1 py-0.2 rounded text-[9px] font-extrabold shrink-0 ${
+                        locationSource === 'ip_geolocation' || locationSource === 'network_cellular'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-cyan-500/20 text-cyan-300'
+                      }`}
+                    >
+                      {locationSource === 'ip_geolocation'
+                        ? 'IP'
+                        : locationSource === 'manual'
+                        ? 'PIN'
+                        : 'GPS'}
+                    </span>
+                  )}
+                  <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                </button>
+              )}
+
+              {onTrackMove && (
+                <button
+                  type="button"
+                  onClick={onTrackMove}
+                  disabled={isTracking}
+                  title="Acquire live GPS / network location"
+                  aria-label="Track live GPS location"
+                  className={`p-1.5 rounded-xl border transition shrink-0 ${
+                    isTracking || locationAcquiring
+                      ? 'bg-cyan-600/25 border-cyan-500/50 text-cyan-300'
+                      : 'bg-[#131E3A] hover:bg-slate-800 border-slate-700/80 text-cyan-400 hover:text-cyan-300'
+                  } disabled:opacity-60`}
+                >
+                  <LocateFixed className={`w-3.5 h-3.5 ${isTracking || locationAcquiring ? 'animate-spin' : ''}`} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Center: Top Mode Navigation Pills (Segmented: Citizen Safety vs. Science & Research) */}
@@ -454,14 +558,15 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-1">
             <button
               onClick={() => onToggleMode('safety')}
-              className={`px-2.5 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition font-semibold ${
+              className={`px-2 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition font-semibold ${
                 appMode === 'safety'
                   ? 'bg-emerald-600 text-white shadow-md'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
               }`}
             >
               <Shield className="w-3.5 h-3.5 text-emerald-300" />
-              <span>Public Safety</span>
+              <span className="hidden xl:inline">Public Safety</span>
+              <span className="xl:hidden">Safety</span>
             </button>
 
             <button
@@ -485,7 +590,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-1">
             <button
               onClick={() => onToggleMode('research')}
-              className={`px-2.5 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
+              className={`px-2 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition ${
                 appMode === 'research'
                   ? 'bg-indigo-600 text-white shadow-md font-semibold'
                   : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
@@ -507,8 +612,8 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <BrainCircuit className="w-3.5 h-3.5 text-purple-300" />
               <span className="hidden xl:inline">Climate Lab (RQ1–6)</span>
-              <span className="xl:hidden">Lab (RQ1–6)</span>
-              <span className="text-[9px] px-1 py-0.2 rounded bg-purple-500/30 text-purple-200 border border-purple-400/30 font-bold uppercase">
+              <span className="xl:hidden">Lab</span>
+              <span className="hidden xl:inline text-[9px] px-1 py-0.2 rounded bg-purple-500/30 text-purple-200 border border-purple-400/30 font-bold uppercase">
                 ADV
               </span>
             </button>
@@ -520,11 +625,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* AI Grounded Safety Analyst */}
           <button
             onClick={onOpenAIAnalyst}
-            className="px-2.5 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60 transition group"
+            className="px-2 xl:px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-slate-400 hover:text-white hover:bg-slate-800/60 transition group"
             title="Local Risk Grounded AI Safety Analyst"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition" />
-            <span className="font-semibold text-slate-200">AI Analyst</span>
+            <span className="hidden xl:inline font-semibold text-slate-200">AI Analyst</span>
+            <span className="xl:hidden font-semibold text-slate-200">AI</span>
           </button>
         </div>
 
@@ -589,7 +695,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="px-2 sm:px-2.5 py-1.5 bg-rose-600/25 hover:bg-rose-600/40 border border-rose-500/40 text-rose-300 hover:text-white rounded-xl transition flex items-center gap-1.5 text-xs font-black shadow-sm group"
             >
               <AlertOctagon className="w-3.5 h-3.5 text-rose-400 animate-pulse group-hover:rotate-12 transition" />
-              <span className="hidden lg:inline tracking-wider">
+              <span className="hidden xl:inline tracking-wider">
                 {getTranslation(lang, 'emergency_badge', 'EMERGENCY')}
               </span>
             </button>

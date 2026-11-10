@@ -21,8 +21,38 @@ const configuredApiUrl =
 const GEO_API_BASE = configuredApiUrl
   ? `${configuredApiUrl.replace(/\/+$/, '').replace(/\/api$/, '')}/api`
   : '/api';
+const REMOTE_FALLBACK_API_BASE = 'https://heatshield-ai-backend-jls2.onrender.com/api';
 const IS_FILE_PROTOCOL_NO_BACKEND =
   typeof window !== 'undefined' && window.location?.protocol === 'file:' && !configuredApiUrl;
+
+let localBundleNoBackend = false;
+
+async function inspectAndMarkLocalBundle(res: Response): Promise<boolean> {
+  if (res.status !== 404) return false;
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) return false;
+  try {
+    const clone = res.clone();
+    const body = await clone.json();
+    if (body?.error === 'offline_local_bundle' || body?.offline === true) {
+      localBundleNoBackend = true;
+      return true;
+    }
+  } catch {
+    // ignore JSON inspection failure
+  }
+  return false;
+}
+
+function getGeoApiCandidates(): string[] {
+  if (IS_FILE_PROTOCOL_NO_BACKEND || localBundleNoBackend) {
+    return [REMOTE_FALLBACK_API_BASE];
+  }
+  if (GEO_API_BASE === '/api') {
+    return ['/api', REMOTE_FALLBACK_API_BASE];
+  }
+  return [GEO_API_BASE];
+}
 
 export interface GeolocationResult {
   status: 'resolved' | 'unavailable';
@@ -162,7 +192,7 @@ export function formatLocationConfidence(
 
 /**
  * Reverse geocodes GPS coordinates to a real place name without mutating the coordinates.
- * Hierarchy: Backend /api/geo/reverse (Nominatim) -> Direct BigDataCloud -> Offline Haversine centroid fallback.
+ * Hierarchy: Backend /api/geo/reverse (Nominatim/BigDataCloud) -> Direct BigDataCloud -> Offline Haversine centroid fallback.
  */
 export async function reverseGeocodeCoords(
   lat: number,
@@ -170,16 +200,21 @@ export async function reverseGeocodeCoords(
   hints?: { city?: string; district?: string; state?: string }
 ): Promise<ReverseGeocodeResult> {
   const isOnline = typeof navigator === 'undefined' ? true : navigator.onLine;
+  let backendCentroidFallback: ReverseGeocodeResult | null = null;
 
   if (isOnline && typeof fetch === 'function') {
-    // 1. Try HeatShield backend Nominatim proxy (unless running standalone file:// bundle)
-    if (!IS_FILE_PROTOCOL_NO_BACKEND) {
-      const backendReq = createAbortSignal(3500);
+    // 1. Try HeatShield backend Nominatim / BigDataCloud proxy (with automatic standalone fallback)
+    for (const apiBase of getGeoApiCandidates()) {
+      if (localBundleNoBackend && apiBase === '/api') continue;
+      const backendReq = createAbortSignal(2400);
       try {
         const res = await fetch(
-          `${GEO_API_BASE}/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
+          `${apiBase}/geo/reverse?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`,
           { signal: backendReq.signal }
         );
+        if (await inspectAndMarkLocalBundle(res)) {
+          continue;
+        }
         const ct = res.headers.get('content-type') || '';
         if (res.ok && ct.includes('application/json')) {
           const data = await res.json();
@@ -197,10 +232,14 @@ export async function reverseGeocodeCoords(
           const stateCode =
             data.state_code || districtObj.state_code || findStateCodeForName(stateName, districtName);
           const reverseSource: ReverseGeocodeSource =
-            data.reverse_source === 'nominatim' ? 'nominatim' : 'local_centroid_fallback';
+            data.reverse_source === 'nominatim'
+              ? 'nominatim'
+              : data.reverse_source === 'bigdatacloud'
+              ? 'bigdatacloud'
+              : 'local_centroid_fallback';
 
           if (placeName || districtName) {
-            return {
+            const parsed: ReverseGeocodeResult = {
               placeName: placeName || districtName,
               districtName,
               stateName,
@@ -210,19 +249,26 @@ export async function reverseGeocodeCoords(
               isApproximateCentroid: Boolean(data.is_approximate_centroid),
               distanceKm: typeof data.distance_km === 'number' ? data.distance_km : undefined
             };
+            // Only return immediately if backed by a true online reverse geocoder;
+            // if backend fell back to centroid (e.g. Nominatim 429 on cloud IP), try BigDataCloud next!
+            if (reverseSource === 'nominatim' || reverseSource === 'bigdatacloud') {
+              return parsed;
+            }
+            backendCentroidFallback = parsed;
+            break;
           }
         } else {
-          console.warn(`[ReverseGeocode] Backend returned HTTP ${res.status} (${ct})`);
+          console.warn(`[ReverseGeocode] ${apiBase}/geo/reverse returned HTTP ${res.status} (${ct})`);
         }
       } catch (err) {
-        console.warn('[ReverseGeocode] Backend /api/geo/reverse failed:', err);
+        console.warn(`[ReverseGeocode] ${apiBase}/geo/reverse failed:`, err);
       } finally {
         backendReq.cleanup();
       }
     }
 
-    // 2. Direct browser CORS-friendly BigDataCloud reverse geocoder fallback (static / Vercel deploys)
-    const bdcReq = createAbortSignal(3500);
+    // 2. Direct browser CORS-friendly BigDataCloud reverse geocoder fallback (static / standalone / Nominatim-limited deploys)
+    const bdcReq = createAbortSignal(3200);
     try {
       const res = await fetch(
         `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=en`,
@@ -258,6 +304,10 @@ export async function reverseGeocodeCoords(
     } finally {
       bdcReq.cleanup();
     }
+  }
+
+  if (backendCentroidFallback) {
+    return backendCentroidFallback;
   }
 
   // 3. Offline Haversine nearest-district centroid fallback (clearly marked as approximate centroid!)
@@ -444,120 +494,252 @@ export function clearManualLocation(): void {
 }
 
 /**
+ * Android 7+ / older WebView compatible replacement for ES2021 Promise.any.
+ * Resolves with the first promise that fulfills; rejects only if all reject.
+ */
+function firstFulfilled<T>(promises: Array<Promise<T>>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (promises.length === 0) {
+      reject(new Error('All geolocation providers failed.'));
+      return;
+    }
+    let settled = false;
+    let remaining = promises.length;
+    const errors: string[] = [];
+
+    promises.forEach((p, idx) => {
+      Promise.resolve(p).then(
+        (val) => {
+          if (!settled) {
+            settled = true;
+            resolve(val);
+          }
+        },
+        (err) => {
+          errors[idx] = err instanceof Error ? err.message : String(err);
+          remaining -= 1;
+          if (!settled && remaining <= 0) {
+            reject(new Error(errors.filter(Boolean).join('; ') || 'All providers failed.'));
+          }
+        }
+      );
+    });
+  });
+}
+
+/**
  * Acquire the best possible location through cascading multi-tier resolution.
  * Never returns a silent hardcoded city on failure — returns explicit `status: 'unavailable'`.
+ *
+ * Optionally calls `onPreliminaryLocation` as soon as a fast approximate IP fix becomes ready
+ * (if hardware/network GPS takes >1.5s), so Live Maps and telemetry never stall blank while GPS locks.
  */
 export async function acquireBestLocation(
-  onStatusUpdate?: (status: string) => void
+  onStatusUpdate?: (status: string) => void,
+  onPreliminaryLocation?: (preliminary: GeolocationResult) => void
 ): Promise<GeolocationResult> {
   let gpsErrorCode: GeolocationResult['errorCode'] = 'POSITION_UNAVAILABLE';
   let gpsErrorDetail = '';
+  let preciseDone = false;
+  let ipPrefetchPromise: Promise<GeolocationResult> | null = null;
+  let ipPrefetchTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // 1. TIER 1: Native Android Bridge (inside HeatShield APK)
-  const nativeBridge = typeof window !== 'undefined' ? (window as any).HeatShieldNativeGps : undefined;
-  if (nativeBridge && typeof nativeBridge.requestLocation === 'function') {
-    onStatusUpdate?.('Accessing native Android GNSS / Network sensors...');
-    try {
-      const nativeLoc = await acquireFromNativeBridge(nativeBridge, 8000);
-      return await formatResolvedLocation(
-        nativeLoc.latitude,
-        nativeLoc.longitude,
-        nativeLoc.accuracy,
-        'native_android'
-      );
-    } catch (e) {
-      console.warn('[Geolocation] Native bridge failed, falling back to browser API:', e);
-    }
-  }
-
-  // 2. TIER 2: Browser W3C High Accuracy (GNSS/GPS satellites)
-  if (typeof navigator !== 'undefined' && navigator.geolocation) {
-    onStatusUpdate?.('Acquiring high-accuracy satellite GPS fix...');
-    try {
-      const pos = await getW3cPosition({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
+  const ensureIpPrefetch = (): Promise<GeolocationResult> => {
+    if (!ipPrefetchPromise) {
+      ipPrefetchPromise = acquireFromIpFallback(undefined, gpsErrorCode, gpsErrorDetail).then((res) => {
+        if (!preciseDone && res.status === 'resolved' && onPreliminaryLocation) {
+          onPreliminaryLocation(res);
+        }
+        return res;
       });
-      return await formatResolvedLocation(
-        pos.coords.latitude,
-        pos.coords.longitude,
-        pos.coords.accuracy || 25,
-        'hardware_gps'
-      );
-    } catch (err: any) {
-      console.warn('[Geolocation] High-accuracy GPS failed:', err?.message || err);
-
-      if (err?.code === 1) {
-        gpsErrorCode = 'PERMISSION_DENIED';
-        gpsErrorDetail = 'Location permission denied by user.';
-        onStatusUpdate?.('GPS permission denied. Trying approximate network IP lookup...');
-        return await acquireFromIpFallback(onStatusUpdate, gpsErrorCode, gpsErrorDetail);
-      }
-
-      if (err?.code === 3) {
-        gpsErrorCode = 'TIMEOUT';
-        gpsErrorDetail = 'Satellite GPS timed out.';
-      } else {
-        gpsErrorCode = 'POSITION_UNAVAILABLE';
-        gpsErrorDetail = err?.message || 'GPS position unavailable.';
-      }
-
-      // 3. TIER 3: Low-Accuracy Cellular / Wi-Fi Triangulation (Fast indoor fix)
-      onStatusUpdate?.('Satellite signal weak. Trying Wi-Fi / network positioning...');
-      try {
-        const lowAccPos = await getW3cPosition({
-          enableHighAccuracy: false,
-          timeout: 8000,
-          maximumAge: 300000
-        });
-        return await formatResolvedLocation(
-          lowAccPos.coords.latitude,
-          lowAccPos.coords.longitude,
-          lowAccPos.coords.accuracy || 250,
-          'network_cellular'
-        );
-      } catch (lowAccErr: any) {
-        console.warn('[Geolocation] Low-accuracy positioning failed:', lowAccErr?.message || lowAccErr);
-        gpsErrorDetail = lowAccErr?.message || gpsErrorDetail || 'Browser geolocation unavailable.';
-      }
     }
-  } else {
-    gpsErrorDetail = 'Browser geolocation API unavailable.';
+    return ipPrefetchPromise;
+  };
+
+  const stopPrefetchTimer = () => {
+    if (ipPrefetchTimer !== null) {
+      clearTimeout(ipPrefetchTimer);
+      ipPrefetchTimer = null;
+    }
+  };
+
+  // Start background IP lookup after 1.5s if precise sensors are still acquiring / prompting
+  if (onPreliminaryLocation) {
+    ipPrefetchTimer = setTimeout(() => {
+      if (!preciseDone) {
+        void ensureIpPrefetch();
+      }
+    }, 1500);
   }
 
-  // 4. TIER 4: Approximate IP-Based Geolocation Fallback
-  onStatusUpdate?.('Trying approximate regional IP lookup...');
-  return await acquireFromIpFallback(onStatusUpdate, gpsErrorCode, gpsErrorDetail);
+  try {
+    // 1. TIER 1: Native Android Bridge (inside HeatShield APK)
+    const nativeBridge = typeof window !== 'undefined' ? (window as any).HeatShieldNativeGps : undefined;
+    if (nativeBridge && typeof nativeBridge.requestLocation === 'function') {
+      onStatusUpdate?.('Accessing native Android GNSS / Network sensors...');
+      try {
+        const nativeLoc = await acquireFromNativeBridge(nativeBridge, 8000);
+        preciseDone = true;
+        stopPrefetchTimer();
+        return await formatResolvedLocation(
+          nativeLoc.latitude,
+          nativeLoc.longitude,
+          nativeLoc.accuracy,
+          'native_android'
+        );
+      } catch (e) {
+        console.warn('[Geolocation] Native bridge failed, falling back to browser/IP:', e);
+      }
+    }
+
+    // 2. TIER 2: Browser W3C High Accuracy (GNSS/GPS satellites)
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      onStatusUpdate?.('Acquiring high-accuracy satellite GPS fix...');
+      try {
+        const pos = await getW3cPosition({
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 60000
+        });
+        preciseDone = true;
+        stopPrefetchTimer();
+        return await formatResolvedLocation(
+          pos.coords.latitude,
+          pos.coords.longitude,
+          pos.coords.accuracy || 25,
+          'hardware_gps'
+        );
+      } catch (err: any) {
+        console.warn('[Geolocation] High-accuracy GPS failed:', err?.message || err);
+
+        if (err?.code === 1) {
+          gpsErrorCode = 'PERMISSION_DENIED';
+          gpsErrorDetail = 'Location permission denied by user.';
+          onStatusUpdate?.('GPS permission denied. Using approximate network IP lookup...');
+          const ipRes = ipPrefetchPromise
+            ? await ipPrefetchPromise
+            : await acquireFromIpFallback(onStatusUpdate, gpsErrorCode, gpsErrorDetail);
+          preciseDone = true;
+          stopPrefetchTimer();
+          if (ipRes.status === 'unavailable' && onStatusUpdate) {
+            onStatusUpdate('Location unavailable — please select your city or village manually.');
+          }
+          return ipRes;
+        }
+
+        if (err?.code === 3) {
+          gpsErrorCode = 'TIMEOUT';
+          gpsErrorDetail = 'Satellite GPS timed out.';
+        } else {
+          gpsErrorCode = 'POSITION_UNAVAILABLE';
+          gpsErrorDetail = err?.message || 'GPS position unavailable.';
+        }
+
+        // 3. TIER 3: Low-Accuracy Cellular / Wi-Fi Triangulation (Fast indoor fix)
+        onStatusUpdate?.('Satellite signal weak. Trying Wi-Fi / network positioning...');
+        try {
+          const lowAccPos = await getW3cPosition({
+            enableHighAccuracy: false,
+            timeout: 4500,
+            maximumAge: 300000
+          });
+          preciseDone = true;
+          stopPrefetchTimer();
+          return await formatResolvedLocation(
+            lowAccPos.coords.latitude,
+            lowAccPos.coords.longitude,
+            lowAccPos.coords.accuracy || 250,
+            'network_cellular'
+          );
+        } catch (lowAccErr: any) {
+          console.warn('[Geolocation] Low-accuracy positioning failed:', lowAccErr?.message || lowAccErr);
+          gpsErrorDetail = lowAccErr?.message || gpsErrorDetail || 'Browser geolocation unavailable.';
+        }
+      }
+    } else {
+      gpsErrorDetail = 'Browser geolocation API unavailable.';
+    }
+
+    // 4. TIER 4: Approximate IP-Based Geolocation Fallback (reusing prefetched IP result if ready)
+    preciseDone = true;
+    stopPrefetchTimer();
+    onStatusUpdate?.('Trying approximate regional IP lookup...');
+    const finalIp = ipPrefetchPromise
+      ? await ipPrefetchPromise
+      : await acquireFromIpFallback(onStatusUpdate, gpsErrorCode, gpsErrorDetail);
+    if (finalIp.status === 'unavailable') {
+      onStatusUpdate?.('Location unavailable — please select your city or village manually.');
+      return buildUnavailableLocationResult(
+        gpsErrorCode,
+        finalIp.errorReason || gpsErrorDetail || 'Location unavailable.'
+      );
+    }
+    return finalIp;
+  } finally {
+    preciseDone = true;
+    stopPrefetchTimer();
+  }
 }
 
 /**
  * Native Android APK bridge helper
+ * Handles permission prompts gracefully so native OS permission dialogs do not expire prematurely.
  */
 function acquireFromNativeBridge(
   bridge: any,
   timeoutMs: number
 ): Promise<{ latitude: number; longitude: number; accuracy: number }> {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error('Native Android GPS request timed out.'));
-    }, timeoutMs);
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
-      clearTimeout(timer);
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
       if (typeof window !== 'undefined') {
         delete (window as any).__onNativeGpsSuccess;
         delete (window as any).__onNativeGpsError;
+        delete (window as any).__onNativeGpsPermissionResult;
       }
     };
 
+    const armTimer = (ms: number) => {
+      if (timer !== null) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('Native Android GPS request timed out.'));
+      }, ms);
+    };
+
+    const waitingForPerm =
+      typeof bridge.isWaitingForPermission === 'function' && Boolean(bridge.isWaitingForPermission());
+    armTimer(waitingForPerm ? Math.max(timeoutMs, 15000) : timeoutMs);
+
+    (window as any).__onNativeGpsPermissionResult = (granted: boolean) => {
+      if (settled) return;
+      if (!granted) {
+        settled = true;
+        cleanup();
+        reject(new Error('Android location permission denied.'));
+        return;
+      }
+      armTimer(Math.max(timeoutMs, 8500));
+    };
+
     (window as any).__onNativeGpsSuccess = (lat: number, lon: number, acc: number) => {
+      if (settled) return;
+      settled = true;
       cleanup();
       resolve({ latitude: lat, longitude: lon, accuracy: acc || 20 });
     };
 
     (window as any).__onNativeGpsError = (errStr: string) => {
+      if (settled) return;
+      settled = true;
       cleanup();
       reject(new Error(errStr));
     };
@@ -573,6 +755,79 @@ function getW3cPosition(options: PositionOptions): Promise<GeolocationPosition> 
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(resolve, reject, options);
   });
+}
+
+async function fetchIpwhoLocation(reasons: string[]): Promise<GeolocationResult> {
+  const req = createAbortSignal(3200);
+  try {
+    const res = await fetch('https://ipwho.is/', { signal: req.signal });
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok || !ct.includes('application/json')) {
+      throw new Error(`ipwho.is HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (
+      data.success === true &&
+      typeof data.latitude === 'number' &&
+      typeof data.longitude === 'number' &&
+      Number.isFinite(data.latitude) &&
+      Number.isFinite(data.longitude)
+    ) {
+      return await formatResolvedLocation(
+        data.latitude,
+        data.longitude,
+        15000,
+        'ip_geolocation',
+        {
+          city: data.city || undefined,
+          state: data.region || undefined,
+          country: data.country || undefined
+        }
+      );
+    }
+    const msg = `ipwho.is: ${data.message || 'unsuccessful lookup'}`;
+    reasons.push(msg);
+    throw new Error(msg);
+  } finally {
+    req.cleanup();
+  }
+}
+
+async function fetchFreeIpApiLocation(reasons: string[]): Promise<GeolocationResult> {
+  const req = createAbortSignal(3200);
+  try {
+    // Use free.freeipapi.com directly (freeipapi.com/api/json issues a 307 redirect)
+    const res = await fetch('https://free.freeipapi.com/api/v1/json', { signal: req.signal });
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok || !ct.includes('application/json')) {
+      throw new Error(`freeipapi HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (
+      typeof data.latitude === 'number' &&
+      typeof data.longitude === 'number' &&
+      Number.isFinite(data.latitude) &&
+      Number.isFinite(data.longitude) &&
+      !(data.latitude === 0 && data.longitude === 0)
+    ) {
+      return await formatResolvedLocation(
+        data.latitude,
+        data.longitude,
+        15000,
+        'ip_geolocation',
+        {
+          city: data.cityName || undefined,
+          state: data.regionName || undefined,
+          country: data.countryName || undefined
+        }
+      );
+    }
+    const msg = 'freeipapi returned invalid coordinates';
+    reasons.push(msg);
+    throw new Error(msg);
+  } finally {
+    req.cleanup();
+  }
 }
 
 /**
@@ -595,79 +850,25 @@ async function acquireFromIpFallback(
     return buildUnavailableLocationResult(priorErrorCode, offlineMsg);
   }
 
-  // 1. Direct browser HTTPS IP providers (resolves client's real public ISP IP directly without
-  // intermediate CDN/proxy hop ambiguity or backend cold-start latency)
-  const directIpReq1 = createAbortSignal(3000);
+  // 1. Race city-level CORS-friendly direct HTTPS IP providers in parallel (fast ~300-800ms fix)
   try {
-    const res = await fetch('https://ipwho.is/', { signal: directIpReq1.signal });
-    const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) {
-      const data = await res.json();
-      if (
-        data.success === true &&
-        typeof data.latitude === 'number' &&
-        typeof data.longitude === 'number' &&
-        Number.isFinite(data.latitude) &&
-        Number.isFinite(data.longitude)
-      ) {
-        return await formatResolvedLocation(
-          data.latitude,
-          data.longitude,
-          15000,
-          'ip_geolocation',
-          {
-            city: data.city || undefined,
-            state: data.region || undefined,
-            country: data.country || undefined
-          }
-        );
-      }
-      reasons.push(`ipwho.is: ${data.message || 'unsuccessful lookup'}`);
-    }
+    return await firstFulfilled([
+      fetchIpwhoLocation(reasons),
+      fetchFreeIpApiLocation(reasons)
+    ]);
   } catch (err) {
-    console.warn('[Geolocation] ipwho.is request failed:', err);
-  } finally {
-    directIpReq1.cleanup();
+    console.warn('[Geolocation] Primary direct IP providers failed:', err);
   }
 
-  const directIpReq2 = createAbortSignal(3000);
-  try {
-    const res = await fetch('https://freeipapi.com/api/json', { signal: directIpReq2.signal });
-    const ct = res.headers.get('content-type') || '';
-    if (res.ok && ct.includes('application/json')) {
-      const data = await res.json();
-      if (
-        typeof data.latitude === 'number' &&
-        typeof data.longitude === 'number' &&
-        Number.isFinite(data.latitude) &&
-        Number.isFinite(data.longitude) &&
-        !(data.latitude === 0 && data.longitude === 0)
-      ) {
-        return await formatResolvedLocation(
-          data.latitude,
-          data.longitude,
-          15000,
-          'ip_geolocation',
-          {
-            city: data.cityName || undefined,
-            state: data.regionName || undefined,
-            country: data.countryName || undefined
-          }
-        );
-      }
-    }
-  } catch (err) {
-    console.warn('[Geolocation] freeipapi.com request failed:', err);
-  } finally {
-    directIpReq2.cleanup();
-  }
-
-  // 2. Fallback to same-origin HeatShield backend IP geolocation (/api/geo/ip) if direct third-party
-  // providers are blocked by privacy extensions or corporate firewalls
-  if (!IS_FILE_PROTOCOL_NO_BACKEND) {
+  // 2. Fallback to HeatShield backend IP geolocation (/api/geo/ip -> remote Render standalone fallback)
+  for (const apiBase of getGeoApiCandidates()) {
+    if (localBundleNoBackend && apiBase === '/api') continue;
     const backendReq = createAbortSignal(3500);
     try {
-      const res = await fetch(`${GEO_API_BASE}/geo/ip`, { signal: backendReq.signal });
+      const res = await fetch(`${apiBase}/geo/ip`, { signal: backendReq.signal });
+      if (await inspectAndMarkLocalBundle(res)) {
+        continue;
+      }
       const ct = res.headers.get('content-type') || '';
       if (res.ok && ct.includes('application/json')) {
         const data = await res.json();
@@ -692,17 +893,52 @@ async function acquireFromIpFallback(
           );
         }
         if (data.reason) {
-          console.warn('[Geolocation] /api/geo/ip unavailable:', data.reason);
+          console.warn(`[Geolocation] ${apiBase}/geo/ip unavailable:`, data.reason);
           reasons.push(String(data.reason));
         }
       } else {
-        console.warn(`[Geolocation] /api/geo/ip returned HTTP ${res.status} (${ct})`);
+        console.warn(`[Geolocation] ${apiBase}/geo/ip returned HTTP ${res.status} (${ct})`);
       }
     } catch (err) {
-      console.warn('[Geolocation] /api/geo/ip request failed:', err);
+      console.warn(`[Geolocation] ${apiBase}/geo/ip request failed:`, err);
     } finally {
       backendReq.cleanup();
     }
+  }
+
+  // 3. Tertiary direct CORS provider (GeoJS — keep last since free tier may return country centroid)
+  const geoJsReq = createAbortSignal(3000);
+  try {
+    const res = await fetch('https://get.geojs.io/v1/ip/geo.json', { signal: geoJsReq.signal });
+    const ct = res.headers.get('content-type') || '';
+    if (res.ok && ct.includes('application/json')) {
+      const data = await res.json();
+      const lat = Number(data.latitude);
+      const lon = Number(data.longitude);
+      if (Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0)) {
+        const hasCity = Boolean(data.city && String(data.city).trim());
+        const accuracyM = typeof data.accuracy === 'number' && data.accuracy > 0
+          ? data.accuracy * 1000
+          : hasCity
+          ? 25000
+          : 150000;
+        return await formatResolvedLocation(
+          lat,
+          lon,
+          accuracyM,
+          'ip_geolocation',
+          {
+            city: data.city || undefined,
+            state: data.region || undefined,
+            country: data.country || undefined
+          }
+        );
+      }
+    }
+  } catch (err) {
+    console.warn('[Geolocation] geojs.io request failed:', err);
+  } finally {
+    geoJsReq.cleanup();
   }
 
   const finalReason =
