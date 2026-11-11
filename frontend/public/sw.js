@@ -4,7 +4,7 @@
  * stale cached live-weather, forecast, or IP-geolocation responses as current data.
  */
 
-const CACHE_NAME = 'heatshield-v7';
+const CACHE_NAME = 'heatshield-v8';
 
 const PRECACHE_ASSETS = [
   '/',

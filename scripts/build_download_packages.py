@@ -122,8 +122,8 @@ def build_android_apk():
         manifest = """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ai.heatshield.app"
-    android:versionCode="206"
-    android:versionName="2.0.6">
+    android:versionCode="207"
+    android:versionName="2.0.7">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -500,7 +500,7 @@ public class MainActivity extends Activity {
         // Strip WebView '; wv)' token so public map tile CDNs do not block tile requests
         String ua = settings.getUserAgentString();
         if (ua != null) {
-            ua = ua.replace("; wv)", ")").replace("; wv;", ";").trim() + " HeatShieldAI/2.0.6";
+            ua = ua.replace("; wv)", ")").replace("; wv;", ";").trim() + " HeatShieldAI/2.0.7";
             settings.setUserAgentString(ua);
         }
 
@@ -901,8 +901,8 @@ def build_wearos_apk():
         manifest = """<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ai.heatshield.wear"
-    android:versionCode="206"
-    android:versionName="2.0.6">
+    android:versionCode="207"
+    android:versionName="2.0.7">
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -1293,7 +1293,7 @@ fi
 """
 
     readme = """# HeatShield AI — Desktop Standalone Command Center
-## Version 2.0.6 (Windows, macOS, Linux)
+## Version 2.0.7 (Windows, macOS, Linux)
 
 ### Instant 1-Click Launch:
 1. **Extract ALL files** from this ZIP archive first (do not launch inside ZIP preview).
@@ -1303,7 +1303,7 @@ fi
 4. Note: Do **not** open `web/index.html` directly via `file://` because modern browsers block interactive JS modules and maps on raw `file://` URLs.
 
 ### Features Included:
-- Hybrid Live + Offline Vector Map: automatically fails over across CARTO Dark / CARTO Voyager / Esri World Street / OSM tiles when online, and renders an crisp built-in India/world vector map offline.
+- Hybrid Live + Offline Vector Map: automatically fails over across key-free Esri Dark Gray / OpenStreetMap / Esri World Street / Esri Topo tiles when online, and renders a crisp built-in India/world vector map offline.
 - All 46 synoptic stations with multi-year observations (2022–2025).
 - Continuous 4-station IDW spatial interpolation engine (<0.6ms execution).
 - All 787 districts and 650,000 villages directory.
@@ -1342,7 +1342,7 @@ def build_master_offline_suite():
     print(f"\n[*] Building Master Offline Research Suite: {zip_path}...")
     
     readme = """# HeatShield AI — Complete Master Offline Research Suite
-Version 2.0.6 | SIH26083
+Version 2.0.7 | SIH26083
 
 This archive contains the entire standalone offline ecosystem:
 - Full Python Machine Learning Pipeline (K-Means, GMM, PCA, UMAP, Isolation Forest, Markov Transition Matrix).
@@ -1391,7 +1391,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(apk)}",
                 "sizeBytes": os.path.getsize(apk),
                 "sizeFormatted": _format_size(apk),
-                "version": "2.0.6",
+                "version": "2.0.7",
                 "sha256": generate_checksum(apk),
                 "format": "APK (Native Signed Package)",
                 "compatibility": "Android 7.0 to 15 (Universal ARM64, ARMv7, x86_64)"
@@ -1401,7 +1401,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(ios)}",
                 "sizeBytes": os.path.getsize(ios),
                 "sizeFormatted": _format_size(ios),
-                "version": "2.0.6",
+                "version": "2.0.7",
                 "sha256": generate_checksum(ios),
                 "format": "Apple Configuration Profile (.mobileconfig)",
                 "compatibility": "iOS 15.0+, iPadOS 15.0+, macOS Monterey+"
@@ -1411,7 +1411,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(wear)}",
                 "sizeBytes": os.path.getsize(wear),
                 "sizeFormatted": _format_size(wear),
-                "version": "2.0.6",
+                "version": "2.0.7",
                 "sha256": generate_checksum(wear),
                 "format": "Wear OS Native Signed APK",
                 "compatibility": "Wear OS 3.0+, Galaxy Watch 4/5/6/7, Pixel Watch 1/2/3"
@@ -1421,7 +1421,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(desktop)}",
                 "sizeBytes": os.path.getsize(desktop),
                 "sizeFormatted": _format_size(desktop),
-                "version": "2.0.6",
+                "version": "2.0.7",
                 "sha256": generate_checksum(desktop),
                 "format": "Windows / macOS Portable (.zip)",
                 "compatibility": "Windows 10/11, macOS 12+, Linux x86_64"
@@ -1431,7 +1431,7 @@ def main():
                 "url": f"/downloads/{os.path.basename(master)}",
                 "sizeBytes": os.path.getsize(master),
                 "sizeFormatted": _format_size(master),
-                "version": "2.0.6",
+                "version": "2.0.7",
                 "sha256": generate_checksum(master),
                 "format": "Full Master Research Package (.zip)",
                 "compatibility": "All Platforms (Universal Offline Bundle)"

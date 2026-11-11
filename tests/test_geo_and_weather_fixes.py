@@ -483,12 +483,15 @@ def test_frontend_relative_assets_and_resilient_map_layers():
     for required_symbol in [
         "OfflineVectorGridLayer",
         "MapResizeObserver",
-        "carto_dark",
-        "carto_voyager",
-        "esri_street",
+        "esri_dark",
         "osm_standard",
+        "esri_street",
+        "esri_topo",
     ]:
         assert required_symbol in resilient
+    # CARTO basemaps serve watermarked 'API KEY REQUIRED' nag tiles with HTTP 200; must stay excluded
+    assert "basemaps.cartocdn.com" not in resilient
+    assert "cartocdn" not in resilient
 
     for map_file in [
         root / "frontend" / "src" / "components" / "mobile" / "MobileMap.tsx",

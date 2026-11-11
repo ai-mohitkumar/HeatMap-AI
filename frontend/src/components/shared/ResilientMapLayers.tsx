@@ -4,10 +4,10 @@ import L from 'leaflet';
 import { Layers, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 
 export type TileProviderId =
-  | 'carto_dark'
-  | 'carto_voyager'
+  | 'esri_dark'
+  | 'osm_standard'
   | 'esri_street'
-  | 'osm_standard';
+  | 'esri_topo';
 
 export type MapBaseMode = 'auto' | 'offline_vector' | TileProviderId;
 
@@ -16,41 +16,46 @@ interface TileProviderConfig {
   label: string;
   shortLabel: string;
   url: string;
+  overlayUrl?: string;
   subdomains?: string;
+  maxNativeZoom?: number;
   attribution: string;
 }
 
 export const TILE_PROVIDERS: TileProviderConfig[] = [
   {
-    id: 'carto_dark',
-    label: 'Dark Atlas (CARTO)',
+    id: 'esri_dark',
+    label: 'Dark Atlas (Esri Key-Free)',
     shortLabel: 'Dark',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    subdomains: 'abcd',
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    overlayUrl:
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    maxNativeZoom: 16,
+    attribution: '&copy; Esri, HERE, Garmin, OpenStreetMap contributors'
   },
   {
-    id: 'carto_voyager',
-    label: 'Street Atlas (CARTO)',
-    shortLabel: 'Streets',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    subdomains: 'abcd',
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    id: 'osm_standard',
+    label: 'OpenStreetMap (Free Open Source)',
+    shortLabel: 'OSM',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    maxNativeZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors'
   },
   {
     id: 'esri_street',
     label: 'World Street (Esri)',
-    shortLabel: 'Esri',
+    shortLabel: 'Streets',
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
-    attribution: '&copy; Esri, TomTom, Garmin, OpenStreetMap'
+    maxNativeZoom: 17,
+    attribution: '&copy; Esri, TomTom, Garmin, OpenStreetMap contributors'
   },
   {
-    id: 'osm_standard',
-    label: 'OpenStreetMap',
-    shortLabel: 'OSM',
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: 'abc',
-    attribution: '&copy; OpenStreetMap contributors'
+    id: 'esri_topo',
+    label: 'Topographic (Esri)',
+    shortLabel: 'Topo',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    maxNativeZoom: 17,
+    attribution: '&copy; Esri, HERE, Garmin, OpenStreetMap contributors'
   }
 ];
 
@@ -361,7 +366,7 @@ interface ResilientMapLayersProps {
 
 export const ResilientMapLayers: React.FC<ResilientMapLayersProps> = ({
   compact = false,
-  defaultProvider = 'carto_dark'
+  defaultProvider = 'esri_dark'
 }) => {
   const map = useMap();
   const initialIndex = useMemo(() => {
@@ -482,33 +487,57 @@ export const ResilientMapLayers: React.FC<ResilientMapLayersProps> = ({
     errorStreakRef.current = 0;
     loadedCountRef.current = 0;
     setAllTilesFailed(false);
-    if (selectedMode === 'auto' || selectedMode === 'carto_dark') {
-      setSelectedMode('carto_voyager');
-    } else if (selectedMode === 'carto_voyager') {
-      setSelectedMode('esri_street');
-    } else if (selectedMode === 'esri_street') {
-      setSelectedMode('offline_vector');
-    } else {
+    const cycleOrder: MapBaseMode[] = [
+      'esri_dark',
+      'osm_standard',
+      'esri_street',
+      'esri_topo',
+      'offline_vector'
+    ];
+    const currentEffective: MapBaseMode =
+      selectedMode === 'auto'
+        ? allTilesFailed
+          ? 'offline_vector'
+          : activeProvider?.id || 'esri_dark'
+        : selectedMode;
+    const idx = cycleOrder.indexOf(currentEffective);
+    const nextMode = cycleOrder[(idx + 1) % cycleOrder.length];
+    if (nextMode === 'esri_dark') {
       setAutoProviderIdx(0);
       setSelectedMode('auto');
+    } else {
+      setSelectedMode(nextMode);
     }
   };
 
   return (
     <>
       {activeProvider && (
-        <TileLayer
-          key={activeProvider.id}
-          attribution={activeProvider.attribution}
-          url={activeProvider.url}
-          subdomains={activeProvider.subdomains || 'abc'}
-          maxZoom={18}
-          zIndex={5}
-          eventHandlers={{
-            tileload: handleTileLoad,
-            tileerror: handleTileError
-          }}
-        />
+        <>
+          <TileLayer
+            key={activeProvider.id}
+            attribution={activeProvider.attribution}
+            url={activeProvider.url}
+            {...(activeProvider.subdomains ? { subdomains: activeProvider.subdomains } : {})}
+            maxNativeZoom={activeProvider.maxNativeZoom ?? 18}
+            maxZoom={18}
+            zIndex={5}
+            eventHandlers={{
+              tileload: handleTileLoad,
+              tileerror: handleTileError
+            }}
+          />
+          {activeProvider.overlayUrl && (
+            <TileLayer
+              key={`${activeProvider.id}-overlay`}
+              url={activeProvider.overlayUrl}
+              {...(activeProvider.subdomains ? { subdomains: activeProvider.subdomains } : {})}
+              maxNativeZoom={activeProvider.maxNativeZoom ?? 18}
+              maxZoom={18}
+              zIndex={6}
+            />
+          )}
+        </>
       )}
 
       {/* Map Tile Status & Style Switcher HUD */}
@@ -542,7 +571,7 @@ export const ResilientMapLayers: React.FC<ResilientMapLayersProps> = ({
               e.stopPropagation();
               handleCycleStyle();
             }}
-            title="Switch map layer style (Dark / Streets / Esri / Offline Vector)"
+            title="Switch map layer style (Dark / OSM / Streets / Topo / Offline Vector)"
             className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition border border-slate-700/80 cursor-pointer"
           >
             <Layers className="w-3 h-3 text-cyan-400" />
