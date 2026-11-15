@@ -32,7 +32,8 @@ import {
   Copy,
   Check,
   HardDrive,
-  Cpu
+  Cpu,
+  FileText
 } from 'lucide-react';
 import { evaluateLocationHeat } from '../utils/indiaGeoStore';
 import { answerHeatSafetyQuery } from '../utils/universalAIEngine';
@@ -59,7 +60,7 @@ interface DeviceShowcaseViewProps {
 }
 
 export interface DownloadPackageInfo {
-  id: 'android' | 'ios' | 'smartwatch' | 'desktop' | 'master';
+  id: 'android' | 'ios' | 'smartwatch' | 'desktop' | 'master' | 'presentation_pdf' | 'presentation_pptx';
   name: string;
   subtitle: string;
   file: string;
@@ -76,6 +77,45 @@ export interface DownloadPackageInfo {
 }
 
 export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
+  {
+    id: 'presentation_pdf',
+    name: 'Presentation Document (PDF Format)',
+    subtitle: '10-Slide Capstone Defense Vector PDF (Mohit Kumar • Reg: 12419046 • Roll: 34)',
+    file: 'HeatShield_AI_Presentation.pdf',
+    url: '/downloads/HeatShield_AI_Presentation.pdf',
+    size: '1.04 MB',
+    version: 'v2.0.7',
+    format: 'Vector Document (.pdf)',
+    compatibility: 'Universal (Adobe Acrobat, Chrome, Safari, Edge, Mobile PDF Viewers)',
+    sha256: '426c17a586da92781f06440db2bfc145e0c54db95c9e066a75771c446369cfbf',
+    badge: 'Downloadable PDF',
+    badgeColor: 'bg-red-500/20 text-red-300 border-red-500/30',
+    instructions: [
+      'Click "Download PDF" to instantly save or view the vector presentation document.',
+      'Features Lovely Professional University (LPU) SCSE title branding, candidate credentials (Mohit Kumar, Reg: 12419046, Roll: 34), live links, and 10 defense slides.',
+      'Vector typography and high-definition charts ready for direct classroom projection or committee printout.',
+      'No PowerPoint or Office installation needed — opens in any modern web browser or mobile PDF viewer.'
+    ]
+  },
+  {
+    id: 'presentation_pptx',
+    name: 'Presentation Deck (PPTX Format)',
+    subtitle: '10-Slide Academic Capstone Slides (Mohit Kumar • Reg: 12419046 • Roll: 34)',
+    file: 'HeatShield_AI_Presentation.pptx',
+    url: '/downloads/HeatShield_AI_Presentation.pptx',
+    size: '1.14 MB',
+    version: 'v2.0.7',
+    format: 'PowerPoint Presentation (.pptx)',
+    compatibility: 'PowerPoint 2016+, Office 365, Google Slides, Keynote, LibreOffice',
+    sha256: 'ac8b015aa1914c90b713a99383faf20d65795aca5190a077e2d56416d1e11139',
+    badge: 'PowerPoint Deck',
+    badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+    instructions: [
+      'Click "Download PPTX" to save the official HeatShield_AI_Presentation.pptx presentation file.',
+      'Includes full slide transitions, editable formatting, LPU credentials, and 16:9 widescreen layout.',
+      'Ready for academic evaluation, viva voce defense, seminar presentation, and review panels.'
+    ]
+  },
   {
     id: 'android',
     name: 'Android Universal APK',
@@ -1392,7 +1432,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
           {/* Download Packages Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {downloadPackages.map((pkg) => {
-              const Icon = pkg.id === 'android' ? Smartphone : (pkg.id === 'ios' ? Smartphone : (pkg.id === 'smartwatch' ? Watch : (pkg.id === 'desktop' ? Laptop : Layers)));
+              const Icon = pkg.id === 'android' ? Smartphone : (pkg.id === 'ios' ? Smartphone : (pkg.id === 'smartwatch' ? Watch : (pkg.id === 'desktop' ? Laptop : (pkg.id.startsWith('presentation') ? FileText : Layers))));
               return (
                 <div
                   key={pkg.id}

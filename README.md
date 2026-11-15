@@ -14,7 +14,7 @@
 
 > **Live Web Application:** https://heat-map-ai.vercel.app/  
 > **Live API & Interactive Docs:** https://heatshield-ai-backend-jls2.onrender.com/docs  
-> **Academic Capstone Project & Presentation Deck:** [`HeatShield_AI_Presentation.pptx`](./HeatShield_AI_Presentation.pptx)  
+> **Academic Capstone Presentation:** [**Download PDF**](./HeatShield_AI_Presentation.pdf)  •  [**Download PPTX Deck**](./HeatShield_AI_Presentation.pptx)  
 > **Candidate Credentials:** Mohit Kumar | Reg No: 12419046 | Roll No: 34  
 > **Institution:** School of Computer Science & Engineering (SCSE), Lovely Professional University (LPU)  
 > **Title**: Unsupervised Spatiotemporal Climate Intelligence Platform: Regional Heat-Stress Discovery, Manifold Learning, Anomaly Detection & Personal Heat Safety  
@@ -229,6 +229,7 @@ Frontend Lint & Build:                oxlint (0 errors) + tsc -b && vite build
 - **Program & Degree**: Bachelor of Technology (B.Tech) — Computer Science & Engineering (CSE)
 - **School / Department**: School of Computer Science & Engineering (SCSE)
 - **Academic Institution**: Lovely Professional University (LPU), Phagwara, Punjab, India
-- **Presentation Deck**: [`HeatShield_AI_Presentation.pptx`](./HeatShield_AI_Presentation.pptx) (10-Slide Academic Capstone Presentation)
+- **Downloadable PDF Presentation**: [`HeatShield_AI_Presentation.pdf`](./HeatShield_AI_Presentation.pdf) (10-Slide Academic Capstone Defense Vector Document)
+- **Downloadable PPTX Deck**: [`HeatShield_AI_Presentation.pptx`](./HeatShield_AI_Presentation.pptx) (10-Slide Microsoft PowerPoint Presentation)
 - **Project Domain**: Artificial Intelligence, Spatial Biometeorology & Climate Public Safety (Project ID: SIH26083)
 - **Data Source**: NOAA National Centers for Environmental Information (NCEI) — Global Summary of the Day (GSOD)

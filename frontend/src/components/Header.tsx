@@ -19,7 +19,8 @@ import {
   Sparkles,
   LocateFixed,
   AlertTriangle,
-  ChevronDown
+  ChevronDown,
+  FileText
 } from 'lucide-react';
 
 import { OFFLINE_STATIONS } from '../utils/offlineEngine';
@@ -729,6 +730,28 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             )}
           </button>
+
+          {/* Download Presentation PDF Button */}
+          <a
+            href="/downloads/HeatShield_AI_Presentation.pdf"
+            download="HeatShield_AI_Presentation.pdf"
+            title="Download Official 10-Slide LPU Presentation in PDF Format (Mohit Kumar • Reg: 12419046 • Roll: 34)"
+            className="hidden xl:flex px-2.5 py-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 hover:text-white rounded-xl transition items-center gap-1.5 text-xs font-bold shadow-sm"
+          >
+            <FileText className="w-3.5 h-3.5 text-red-400" />
+            <span>Download PDF</span>
+          </a>
+
+          {/* Download Presentation PPT Button */}
+          <a
+            href="/downloads/HeatShield_AI_Presentation.pptx"
+            download="HeatShield_AI_Presentation.pptx"
+            title="Download Official 10-Slide LPU Academic Presentation Deck (Mohit Kumar • Reg: 12419046 • Roll: 34)"
+            className="hidden 2xl:flex px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 hover:text-white rounded-xl transition items-center gap-1.5 text-xs font-bold shadow-sm"
+          >
+            <FileText className="w-3.5 h-3.5 text-emerald-400" />
+            <span>PPTX Deck</span>
+          </a>
 
           {/* iOS & Android Suite Quick Button (visible on wide screens) */}
           {onOpenApps && (

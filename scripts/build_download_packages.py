@@ -1435,6 +1435,26 @@ def main():
                 "sha256": generate_checksum(master),
                 "format": "Full Master Research Package (.zip)",
                 "compatibility": "All Platforms (Universal Offline Bundle)"
+            },
+            "presentation_pdf": {
+                "fileName": "HeatShield_AI_Presentation.pdf",
+                "url": "/downloads/HeatShield_AI_Presentation.pdf",
+                "sizeBytes": os.path.getsize(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pdf")) if os.path.exists(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pdf")) else 1091706,
+                "sizeFormatted": _format_size(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pdf")) if os.path.exists(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pdf")) else "1.04 MB",
+                "version": "2.0.7",
+                "sha256": generate_checksum(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pdf")) if os.path.exists(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pdf")) else "426c17a586da92781f06440db2bfc145e0c54db95c9e066a75771c446369cfbf",
+                "format": "Vector Document (.pdf)",
+                "compatibility": "Universal (Adobe Acrobat, Chrome, Safari, Edge, Mobile PDF Viewers)"
+            },
+            "presentation_pptx": {
+                "fileName": "HeatShield_AI_Presentation.pptx",
+                "url": "/downloads/HeatShield_AI_Presentation.pptx",
+                "sizeBytes": os.path.getsize(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pptx")) if os.path.exists(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pptx")) else 1197327,
+                "sizeFormatted": _format_size(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pptx")) if os.path.exists(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pptx")) else "1.14 MB",
+                "version": "2.0.7",
+                "sha256": generate_checksum(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pptx")) if os.path.exists(os.path.join(PROJECT_ROOT, "HeatShield_AI_Presentation.pptx")) else "ac8b015aa1914c90b713a99383faf20d65795aca5190a077e2d56416d1e11139",
+                "format": "PowerPoint Presentation (.pptx)",
+                "compatibility": "PowerPoint 2016+, Office 365, Google Slides, Keynote, LibreOffice"
             }
         }
     }

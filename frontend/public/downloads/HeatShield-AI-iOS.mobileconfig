@@ -13,7 +13,7 @@
     <key>PayloadType</key>
     <string>Configuration</string>
     <key>PayloadUUID</key>
-    <string>2B25AF59-7BC8-4FE5-87CC-78D5EED22575</string>
+    <string>31C4DB9A-2449-4664-AEE9-D4AA712D0966</string>
     <key>PayloadVersion</key>
     <integer>1</integer>
     <key>PayloadRemovalDisallowed</key>
@@ -28,7 +28,7 @@
             <key>PayloadIdentifier</key>
             <string>ai.heatshield.ios.webclip.entry</string>
             <key>PayloadUUID</key>
-            <string>B12429AA-8F6B-473C-B985-E20ED7B4704A</string>
+            <string>1297DBC1-4A07-4D47-BC94-C243736110FD</string>
             <key>PayloadDisplayName</key>
             <string>HeatShield AI</string>
             <key>Label</key>
