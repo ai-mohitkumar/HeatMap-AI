@@ -731,15 +731,26 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
+          {/* Download Project Brief PDF Button */}
+          <a
+            href="/downloads/HeatShield_AI_Project_Brief.pdf"
+            download="HeatShield_AI_Project_Brief.pdf"
+            title="Download Executive Project Brief & 'How It Works' Guide in PDF Format (Mohit Kumar • Reg: 12419046 • Roll: 34)"
+            className="hidden xl:flex px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-300 hover:text-white rounded-xl transition items-center gap-1.5 text-xs font-bold shadow-sm"
+          >
+            <FileText className="w-3.5 h-3.5 text-blue-400" />
+            <span>Project Brief (PDF)</span>
+          </a>
+
           {/* Download Presentation PDF Button */}
           <a
             href="/downloads/HeatShield_AI_Presentation.pdf"
             download="HeatShield_AI_Presentation.pdf"
             title="Download Official 10-Slide LPU Presentation in PDF Format (Mohit Kumar • Reg: 12419046 • Roll: 34)"
-            className="hidden xl:flex px-2.5 py-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 hover:text-white rounded-xl transition items-center gap-1.5 text-xs font-bold shadow-sm"
+            className="hidden 2xl:flex px-2.5 py-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 hover:text-white rounded-xl transition items-center gap-1.5 text-xs font-bold shadow-sm"
           >
             <FileText className="w-3.5 h-3.5 text-red-400" />
-            <span>Download PDF</span>
+            <span>Slides (PDF)</span>
           </a>
 
           {/* Download Presentation PPT Button */}

@@ -60,7 +60,7 @@ interface DeviceShowcaseViewProps {
 }
 
 export interface DownloadPackageInfo {
-  id: 'android' | 'ios' | 'smartwatch' | 'desktop' | 'master' | 'presentation_pdf' | 'presentation_pptx';
+  id: 'android' | 'ios' | 'smartwatch' | 'desktop' | 'master' | 'project_brief_pdf' | 'presentation_pdf' | 'presentation_pptx';
   name: string;
   subtitle: string;
   file: string;
@@ -77,6 +77,26 @@ export interface DownloadPackageInfo {
 }
 
 export const DOWNLOAD_PACKAGES: DownloadPackageInfo[] = [
+  {
+    id: 'project_brief_pdf',
+    name: 'Executive Project Brief (PDF Guide)',
+    subtitle: '4-Page "How It Works" Guide & Evaluator Cheat Sheet (Mohit Kumar • Reg: 12419046 • Roll: 34)',
+    file: 'HeatShield_AI_Project_Brief.pdf',
+    url: '/downloads/HeatShield_AI_Project_Brief.pdf',
+    size: '1.41 MB',
+    version: 'v2.0.7',
+    format: 'Executive Guide (.pdf)',
+    compatibility: 'Universal (Adobe Acrobat, Chrome, Safari, Edge, Mobile PDF Viewers)',
+    sha256: '6c2e1415b21055c16c360e5949aec16f2bd9cd6776955b3b9bf9d6375ce6c82c',
+    badge: 'Executive Brief',
+    badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+    instructions: [
+      'Click "Download PDF" to get the 4-page Executive Project Brief & "How It Works" Guide.',
+      'Contains 60-second elevator pitch, wet-bulb trap explanation, end-to-end system architecture, and 0.49 ms IDW engine proof.',
+      'Includes 6 climate intelligence research labs (RQ1-RQ6) with embedded charts and an Evaluator Cheat Sheet answering tough defense questions.',
+      'Formatted in Lovely Professional University academic format for presentation hand-outs and project review.'
+    ]
+  },
   {
     id: 'presentation_pdf',
     name: 'Presentation Document (PDF Format)',
@@ -1432,7 +1452,7 @@ export const DeviceShowcaseView: React.FC<DeviceShowcaseViewProps> = ({
           {/* Download Packages Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {downloadPackages.map((pkg) => {
-              const Icon = pkg.id === 'android' ? Smartphone : (pkg.id === 'ios' ? Smartphone : (pkg.id === 'smartwatch' ? Watch : (pkg.id === 'desktop' ? Laptop : (pkg.id.startsWith('presentation') ? FileText : Layers))));
+              const Icon = pkg.id === 'android' ? Smartphone : (pkg.id === 'ios' ? Smartphone : (pkg.id === 'smartwatch' ? Watch : (pkg.id === 'desktop' ? Laptop : (pkg.id.includes('pdf') || pkg.id.includes('presentation') ? FileText : Layers))));
               return (
                 <div
                   key={pkg.id}

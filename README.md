@@ -14,7 +14,7 @@
 
 > **Live Web Application:** https://heat-map-ai.vercel.app/  
 > **Live API & Interactive Docs:** https://heatshield-ai-backend-jls2.onrender.com/docs  
-> **Academic Capstone Presentation:** [**Download PDF**](./HeatShield_AI_Presentation.pdf)  •  [**Download PPTX Deck**](./HeatShield_AI_Presentation.pptx)  
+> **Executive Documents:** [**Project Brief & How It Works (PDF)**](./HeatShield_AI_Project_Brief.pdf)  •  [**Presentation PDF**](./HeatShield_AI_Presentation.pdf)  •  [**Presentation PPTX**](./HeatShield_AI_Presentation.pptx)  
 > **Candidate Credentials:** Mohit Kumar | Reg No: 12419046 | Roll No: 34  
 > **Institution:** School of Computer Science & Engineering (SCSE), Lovely Professional University (LPU)  
 > **Title**: Unsupervised Spatiotemporal Climate Intelligence Platform: Regional Heat-Stress Discovery, Manifold Learning, Anomaly Detection & Personal Heat Safety  
@@ -229,6 +229,7 @@ Frontend Lint & Build:                oxlint (0 errors) + tsc -b && vite build
 - **Program & Degree**: Bachelor of Technology (B.Tech) — Computer Science & Engineering (CSE)
 - **School / Department**: School of Computer Science & Engineering (SCSE)
 - **Academic Institution**: Lovely Professional University (LPU), Phagwara, Punjab, India
+- **Executive Project Brief & Guide**: [`HeatShield_AI_Project_Brief.pdf`](./HeatShield_AI_Project_Brief.pdf) (Comprehensive 4-Page "How It Works" Guide & Evaluator Cheat Sheet)
 - **Downloadable PDF Presentation**: [`HeatShield_AI_Presentation.pdf`](./HeatShield_AI_Presentation.pdf) (10-Slide Academic Capstone Defense Vector Document)
 - **Downloadable PPTX Deck**: [`HeatShield_AI_Presentation.pptx`](./HeatShield_AI_Presentation.pptx) (10-Slide Microsoft PowerPoint Presentation)
 - **Project Domain**: Artificial Intelligence, Spatial Biometeorology & Climate Public Safety (Project ID: SIH26083)

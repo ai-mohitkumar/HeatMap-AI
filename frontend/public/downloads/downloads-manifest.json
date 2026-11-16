@@ -1,13 +1,43 @@
 {
-  "buildTimestamp": "2026-11-15T14:49:22+05:30",
+  "buildTimestamp": "2026-11-16T19:22:00+05:30",
   "packages": {
+    "project_brief_pdf": {
+      "fileName": "HeatShield_AI_Project_Brief.pdf",
+      "url": "/downloads/HeatShield_AI_Project_Brief.pdf",
+      "sizeBytes": 1474417,
+      "sizeFormatted": "1.41 MB",
+      "version": "2.0.7",
+      "sha256": "6c2e1415b21055c16c360e5949aec16f2bd9cd6776955b3b9bf9d6375ce6c82c",
+      "format": "Executive Brief & Guide (PDF)",
+      "compatibility": "Universal (Adobe Acrobat, Chrome, Safari, Edge, Mobile PDF Viewers)"
+    },
+    "presentation_pdf": {
+      "fileName": "HeatShield_AI_Presentation.pdf",
+      "url": "/downloads/HeatShield_AI_Presentation.pdf",
+      "sizeBytes": 1091706,
+      "sizeFormatted": "1.04 MB",
+      "version": "2.0.7",
+      "sha256": "426c17a586da92781f06440db2bfc145e0c54db95c9e066a75771c446369cfbf",
+      "format": "Vector Document (.pdf)",
+      "compatibility": "Universal (Adobe Acrobat, Chrome, Safari, Edge, Mobile PDF Viewers)"
+    },
+    "presentation_pptx": {
+      "fileName": "HeatShield_AI_Presentation.pptx",
+      "url": "/downloads/HeatShield_AI_Presentation.pptx",
+      "sizeBytes": 1197327,
+      "sizeFormatted": "1.14 MB",
+      "version": "2.0.7",
+      "sha256": "ac8b015aa1914c90b713a99383faf20d65795aca5190a077e2d56416d1e11139",
+      "format": "PowerPoint Presentation (.pptx)",
+      "compatibility": "PowerPoint 2016+, Office 365, Google Slides, Keynote, LibreOffice"
+    },
     "android": {
       "fileName": "HeatShield-AI-v2.0-universal.apk",
       "url": "/downloads/HeatShield-AI-v2.0-universal.apk",
       "sizeBytes": 2922329,
-      "sizeFormatted": "2.8 MB",
+      "sizeFormatted": "2.79 MB",
       "version": "2.0.7",
-      "sha256": "c162705fe997558006088f7cef428a2ddf1c42cf6c601de57bead1c6661aca64",
+      "sha256": "a3b93478c1fe13f1c1f20d640245a4a58495a6ec89f9e3ef88bb0920dbe45100",
       "format": "APK (Native Signed Package)",
       "compatibility": "Android 7.0 to 15 (Universal ARM64, ARMv7, x86_64)"
     },
@@ -17,7 +47,7 @@
       "sizeBytes": 1877,
       "sizeFormatted": "1.8 KB",
       "version": "2.0.7",
-      "sha256": "5f08226086b3fb291cef9346e4ab007ea88177634bc614983e6b41d645e72427",
+      "sha256": "06a6bf58ae0ced66a8feacb23b5fd7168e60995c9ed15f2bdfbe950244b8b15c",
       "format": "Apple Configuration Profile (.mobileconfig)",
       "compatibility": "iOS 15.0+, iPadOS 15.0+, macOS Monterey+"
     },
@@ -35,9 +65,9 @@
       "fileName": "HeatShield-AI-Desktop-Windows.zip",
       "url": "/downloads/HeatShield-AI-Desktop-Windows.zip",
       "sizeBytes": 2806332,
-      "sizeFormatted": "2.7 MB",
+      "sizeFormatted": "2.68 MB",
       "version": "2.0.7",
-      "sha256": "e0375be57214a947bfaf282059e6e764b605eb024ea6228aecf74ad05e0d04f3",
+      "sha256": "c4793ff06c9a3b2bfaae0cb50a585cebc2ba7c00eecaa4a2e2ba5e22ec9e9da2",
       "format": "Windows / macOS Portable (.zip)",
       "compatibility": "Windows 10/11, macOS 12+, Linux x86_64"
     },
@@ -47,29 +77,9 @@
       "sizeBytes": 19218,
       "sizeFormatted": "18.8 KB",
       "version": "2.0.7",
-      "sha256": "faf0c841d955841c029da6cd8c061d63ebcf4da10a17ca842b084a106dd67b67",
+      "sha256": "a39586c0a79c75b365c4bb8af48494a12713404547ecc5da4790bdd72792b949",
       "format": "Full Master Research Package (.zip)",
       "compatibility": "All Platforms (Universal Offline Bundle)"
-    },
-    "presentation_pdf": {
-      "fileName": "HeatShield_AI_Presentation.pdf",
-      "url": "/downloads/HeatShield_AI_Presentation.pdf",
-      "sizeBytes": 1091706,
-      "sizeFormatted": "1.0 MB",
-      "version": "2.0.7",
-      "sha256": "426c17a586da92781f06440db2bfc145e0c54db95c9e066a75771c446369cfbf",
-      "format": "Vector Document (.pdf)",
-      "compatibility": "Universal (Adobe Acrobat, Chrome, Safari, Edge, Mobile PDF Viewers)"
-    },
-    "presentation_pptx": {
-      "fileName": "HeatShield_AI_Presentation.pptx",
-      "url": "/downloads/HeatShield_AI_Presentation.pptx",
-      "sizeBytes": 1197327,
-      "sizeFormatted": "1.1 MB",
-      "version": "2.0.7",
-      "sha256": "ac8b015aa1914c90b713a99383faf20d65795aca5190a077e2d56416d1e11139",
-      "format": "PowerPoint Presentation (.pptx)",
-      "compatibility": "PowerPoint 2016+, Office 365, Google Slides, Keynote, LibreOffice"
     }
   }
 }
